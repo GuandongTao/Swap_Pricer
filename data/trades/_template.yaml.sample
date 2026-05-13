@@ -1,0 +1,31 @@
+# Single-trade YAML template. To activate: copy this file, rename without ".sample"
+# (e.g. SWAP_TEST_001.yaml), and edit the fields below.
+#
+# Required fields are unindented. Optional fields show their defaults in comments.
+
+trade_id: SWAP_TEST_001          # unique label
+notional: 500000000              # positive number
+pay_fixed: false                 # true = pay fixed/receive float; false = receive fixed/pay float
+fixed_rate: 0.0541               # decimal, 0.0541 = 5.41%
+start_date: 2026-03-09           # ISO date, first accrual day
+maturity_date: 2031-03-09        # ISO date, last accrual end
+fixed_frequency: 1M              # 1Y / 6M / 3M / 1M / 1W / 1D
+fixed_daycount: ACT/360          # ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
+
+# --- Optional (defaults shown) ---
+floating_daycount: ACT/360
+floating_spread: 0.0
+fixing_calendar: NY_FED
+payment_calendar: NY_FED
+payment_delay_bdays: 2           # business-day lag from accrual end to cash payment
+lockout_bdays: 0
+business_day_convention: ModifiedFollowing
+
+description: "Free text — optional, retained in the SwapValuation meta dict."
+
+# --- Advanced: per-trade calendar customization (optional) ---
+# fixing_calendar_extras:                # inline list of extra holidays on top of NY_FED
+#   - 2026-07-06
+# fixing_calendar_extras_file: ...       # path to CSV/TXT/XLSX with a 'date' column
+# payment_calendar_extras: [...]
+# payment_calendar_extras_file: ...

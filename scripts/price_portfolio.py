@@ -16,6 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from swaps.loaders import CombinedTradeLoader  # noqa: E402
+from swaps.loaders.csv_trades import CsvTradeLoader  # noqa: E402
 from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader  # noqa: E402
 from swaps.loaders.yaml_trades import YamlTradeLoader  # noqa: E402
 from swaps.portfolio import Portfolio  # noqa: E402
@@ -45,7 +47,10 @@ def main(argv: list[str] | None = None) -> int:
 
     curve_loader = ExcelCurveLoader(data_dir / "curves")
     fixing_loader = ExcelFixingLoader(data_dir / "fixings" / "fedfunds.csv")
-    trade_loader = YamlTradeLoader(data_dir / "trades")
+    trade_loader = CombinedTradeLoader(
+        YamlTradeLoader(data_dir / "trades"),
+        CsvTradeLoader(data_dir / "trades"),
+    )
 
     pf = Portfolio(curve_loader, fixing_loader, trade_loader)
     valuations, manifest = pf.run(
