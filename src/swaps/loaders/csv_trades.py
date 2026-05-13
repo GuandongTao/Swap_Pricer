@@ -18,6 +18,7 @@ Lines beginning with ``#`` are treated as comments and skipped.
 
 from __future__ import annotations
 
+import io
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
@@ -25,6 +26,22 @@ from typing import Iterable
 import pandas as pd
 
 from .base import TradeDef, TradeLoader
+
+
+def _strip_comment_lines(text: str) -> str:
+    """Drop lines whose first non-whitespace character is '#' OR '"#'.
+
+    Excel wraps cells containing commas in quotes; a leading comment of the
+    form ``# blah, blah, blah`` round-trips as ``"# blah, blah, blah"``. Plain
+    pandas ``comment="#"`` doesn't catch the quoted form.
+    """
+    keep = []
+    for line in text.splitlines():
+        s = line.lstrip()
+        if s.startswith("#") or s.startswith('"#'):
+            continue
+        keep.append(line)
+    return "\n".join(keep)
 
 
 def _to_bool(v) -> bool:
@@ -88,7 +105,8 @@ class CsvTradeLoader(TradeLoader):
     def load_all(self) -> list[TradeDef]:
         out: list[TradeDef] = []
         for p in self._csv_files():
-            df = pd.read_csv(p, comment="#", skip_blank_lines=True)
+            text = _strip_comment_lines(p.read_text(encoding="utf-8-sig"))
+            df = pd.read_csv(io.StringIO(text), skip_blank_lines=True)
             if "trade_id" not in df.columns:
                 raise ValueError(f"{p}: CSV must include a 'trade_id' column")
             df = df.dropna(how="all")
