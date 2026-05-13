@@ -13,6 +13,9 @@ from ..schedule import AccrualPeriod
 from .base import Leg
 
 
+_VALID_PEX = {"none", "start", "end", "both"}
+
+
 class FixedLeg(Leg):
     def __init__(
         self,
@@ -20,11 +23,16 @@ class FixedLeg(Leg):
         notional: NotionalSchedule,
         fixed_rate: float,
         daycount: DayCount,
+        principal_exchange: str = "none",
     ) -> None:
         self.schedule = list(schedule)
         self.notional = notional
         self.fixed_rate = float(fixed_rate)
         self.daycount = daycount
+        pex = str(principal_exchange).lower()
+        if pex not in _VALID_PEX:
+            raise ValueError(f"principal_exchange must be one of {_VALID_PEX}; got {principal_exchange!r}")
+        self.principal_exchange = pex
 
     def cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
         rows = []
@@ -36,6 +44,7 @@ class FixedLeg(Leg):
             disc_cf = payment_amount * df_pay if p.payment_date >= val_date else 0.0
             rows.append(
                 {
+                    "flow_type": "coupon",
                     "accrual_start": p.start,
                     "accrual_end": p.end,
                     "payment_date": p.payment_date,
@@ -48,6 +57,45 @@ class FixedLeg(Leg):
                     "discounted_cashflow": disc_cf,
                 }
             )
+
+        # Principal exchange rows
+        if self.principal_exchange in ("start", "both"):
+            d = self.schedule[0].start
+            n = self.notional(d)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = -n * df if d >= val_date else 0.0
+            rows.insert(0, {
+                "flow_type": "principal_start",
+                "accrual_start": d,
+                "accrual_end": d,
+                "payment_date": d,
+                "period_days": 0,
+                "day_count_fraction": 0.0,
+                "notional": n,
+                "coupon_rate": float("nan"),
+                "payment_amount": -n,
+                "df_to_payment": df,
+                "discounted_cashflow": disc,
+            })
+        if self.principal_exchange in ("end", "both"):
+            last = self.schedule[-1]
+            d = last.payment_date
+            n = self.notional(last.start)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = n * df if d >= val_date else 0.0
+            rows.append({
+                "flow_type": "principal_end",
+                "accrual_start": last.end,
+                "accrual_end": last.end,
+                "payment_date": d,
+                "period_days": 0,
+                "day_count_fraction": 0.0,
+                "notional": n,
+                "coupon_rate": float("nan"),
+                "payment_amount": n,
+                "df_to_payment": df,
+                "discounted_cashflow": disc,
+            })
         return pd.DataFrame(rows)
 
     def accrued(self, val_date: date) -> float:

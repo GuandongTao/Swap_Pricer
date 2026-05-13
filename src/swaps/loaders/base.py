@@ -32,6 +32,10 @@ class TradeDef:
     fixed_daycount: str
     floating_daycount: str = "ACT/360"
     floating_spread: float = 0.0
+    # Principal-exchange policy, separately configurable per leg.
+    # Accepted: "none" (default), "start", "end", "both".
+    fixed_principal_exchange: str = "none"
+    floating_principal_exchange: str = "none"
     # Calendar base name (must be registered) and optional extra holidays
     fixing_calendar: str = "NY_FED"
     payment_calendar: str = "NY_FED"

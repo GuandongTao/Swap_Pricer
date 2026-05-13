@@ -15,6 +15,16 @@ fixed_daycount: ACT/360          # ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/A
 # --- Optional (defaults shown) ---
 floating_daycount: ACT/360
 floating_spread: 0.0
+
+# Principal exchange -- configurable per leg. Allowed values:
+#   none   (default) -- no principal flows
+#   start            -- -notional at start_date (paid out at issuance)
+#   end              -- +notional at final payment date (received at maturity)
+#   both             -- both rows
+# Sign convention works with `pay_fixed` so the cashflow lands on the right side.
+fixed_principal_exchange: none
+floating_principal_exchange: none
+
 fixing_calendar: NY_FED
 payment_calendar: NY_FED
 payment_delay_bdays: 2           # business-day lag from accrual end to cash payment

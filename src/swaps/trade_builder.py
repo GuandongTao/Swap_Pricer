@@ -51,7 +51,10 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         payment_calendar=pay_cal,
     )
     notional = ConstantNotional(td.notional)
-    fixed = FixedLeg(schedule, notional, td.fixed_rate, get_daycount(td.fixed_daycount))
+    fixed = FixedLeg(
+        schedule, notional, td.fixed_rate, get_daycount(td.fixed_daycount),
+        principal_exchange=td.fixed_principal_exchange,
+    )
     floating = OISFloatingLeg(
         schedule=schedule,
         notional=notional,
@@ -63,6 +66,7 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         lockout_bdays=td.lockout_bdays,
         payment_calendar=pay_cal,
         spread=td.floating_spread,
+        principal_exchange=td.floating_principal_exchange,
     )
     return Swap(
         trade_id=td.trade_id,

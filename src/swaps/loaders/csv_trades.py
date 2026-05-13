@@ -84,6 +84,8 @@ def _parse_row(row: dict) -> TradeDef:
         fixed_daycount=str(row["fixed_daycount"]).strip(),
         floating_daycount=get("floating_daycount", "ACT/360", str),
         floating_spread=get("floating_spread", 0.0, float),
+        fixed_principal_exchange=get("fixed_principal_exchange", "none", str),
+        floating_principal_exchange=get("floating_principal_exchange", "none", str),
         fixing_calendar=get("fixing_calendar", "NY_FED", str),
         payment_calendar=get("payment_calendar", "NY_FED", str),
         payment_delay_bdays=get("payment_delay_bdays", 0, int),

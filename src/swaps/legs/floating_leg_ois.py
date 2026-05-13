@@ -31,6 +31,8 @@ from .base import Leg
 
 
 class OISFloatingLeg(Leg):
+    _VALID_PEX = {"none", "start", "end", "both"}
+
     def __init__(
         self,
         schedule: list[AccrualPeriod],
@@ -43,6 +45,7 @@ class OISFloatingLeg(Leg):
         lockout_bdays: int = 0,
         payment_calendar: USCalendar | None = None,
         spread: float = 0.0,
+        principal_exchange: str = "none",
     ) -> None:
         self.schedule = list(schedule)
         self.notional = notional
@@ -54,6 +57,10 @@ class OISFloatingLeg(Leg):
         self.payment_delay_bdays = int(payment_delay_bdays)
         self.lockout_bdays = int(lockout_bdays)
         self.spread = float(spread)
+        pex = str(principal_exchange).lower()
+        if pex not in self._VALID_PEX:
+            raise ValueError(f"principal_exchange must be one of {self._VALID_PEX}; got {principal_exchange!r}")
+        self.principal_exchange = pex
 
     def with_projection_curve(self, new_curve: ZeroCurve) -> "OISFloatingLeg":
         """Return a copy with a different projection curve (for DV01 / sensitivities)."""
@@ -68,7 +75,51 @@ class OISFloatingLeg(Leg):
             lockout_bdays=self.lockout_bdays,
             payment_calendar=self.payment_calendar,
             spread=self.spread,
+            principal_exchange=self.principal_exchange,
         )
+
+    def _principal_rows(self, val_date: date, discount_curve: ZeroCurve) -> tuple[list[dict], list[dict]]:
+        """Return (start_rows, end_rows) -- principal-exchange rows for this leg.
+
+        Sign convention: start = -notional (paid out at issuance), end = +notional
+        (received at maturity). Combined with the swap-level ``pay_fixed`` sign,
+        this naturally lands the cashflow in the right direction.
+        """
+        start_rows, end_rows = [], []
+        if self.principal_exchange in ("start", "both"):
+            d = self.schedule[0].start
+            n = self.notional(d)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = -n * df if d >= val_date else 0.0
+            start_rows.append({
+                "flow_type": "principal_start",
+                "period_start": d, "period_end": d, "payment_date": d,
+                "fixing_date": d, "accrual_start": d, "accrual_end": d,
+                "day_count": 0, "reset_rate": float("nan"), "rate_source": "principal",
+                "implied_daily_fwd": float("nan"),
+                "df_to_fixing": df, "df_to_payment": df,
+                "spread": float("nan"),
+                "compounded_coupon": float("nan"), "effective_coupon": float("nan"),
+                "period_cashflow": -n, "discounted_cashflow": disc,
+            })
+        if self.principal_exchange in ("end", "both"):
+            last = self.schedule[-1]
+            d = last.payment_date
+            n = self.notional(last.start)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = n * df if d >= val_date else 0.0
+            end_rows.append({
+                "flow_type": "principal_end",
+                "period_start": last.end, "period_end": last.end, "payment_date": d,
+                "fixing_date": last.end, "accrual_start": last.end, "accrual_end": last.end,
+                "day_count": 0, "reset_rate": float("nan"), "rate_source": "principal",
+                "implied_daily_fwd": float("nan"),
+                "df_to_fixing": df, "df_to_payment": df,
+                "spread": float("nan"),
+                "compounded_coupon": float("nan"), "effective_coupon": float("nan"),
+                "period_cashflow": n, "discounted_cashflow": disc,
+            })
+        return start_rows, end_rows
 
     # ------------------------------------------------------------------ helpers
     def _fixing_dates_for_period(self, p: AccrualPeriod) -> list[date]:
@@ -173,7 +224,12 @@ class OISFloatingLeg(Leg):
                 row["period_cashflow"] = period_cf if last else float("nan")
                 row["discounted_cashflow"] = disc_cf if last else 0.0
             all_rows.extend(rows)
-        return pd.DataFrame(all_rows)
+        # Tag coupon rows with flow_type for consistency
+        for r in all_rows:
+            r.setdefault("flow_type", "coupon")
+        # Prepend/append principal-exchange rows
+        start_rows, end_rows = self._principal_rows(val_date, discount_curve)
+        return pd.DataFrame(start_rows + all_rows + end_rows)
 
     def accrued(self, val_date: date) -> float:
         for p in self.schedule:
@@ -231,6 +287,7 @@ class OISFloatingLeg(Leg):
             disc_cf = period_cf * df_pay if p.payment_date >= val_date else 0.0
             rows.append(
                 {
+                    "flow_type": "coupon",
                     "accrual_start": p.start,
                     "accrual_end": p.end,
                     "payment_date": p.payment_date,
@@ -249,7 +306,44 @@ class OISFloatingLeg(Leg):
                     "discounted_cashflow": disc_cf,
                 }
             )
-        return pd.DataFrame(rows)
+
+        # Principal-exchange rows, monthly view
+        start_extra: list[dict] = []
+        end_extra: list[dict] = []
+        if self.principal_exchange in ("start", "both"):
+            d = self.schedule[0].start
+            n = self.notional(d)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = -n * df if d >= val_date else 0.0
+            start_extra.append({
+                "flow_type": "principal_start",
+                "accrual_start": d, "accrual_end": d, "payment_date": d,
+                "period_days": 0, "day_count_fraction": 0.0,
+                "notional": n, "n_fixings": 0,
+                "historical_product": float("nan"), "projected_product": float("nan"),
+                "growth": float("nan"),
+                "compounded_coupon": float("nan"), "spread": float("nan"),
+                "effective_coupon": float("nan"),
+                "payment_amount": -n, "df_to_payment": df, "discounted_cashflow": disc,
+            })
+        if self.principal_exchange in ("end", "both"):
+            last = self.schedule[-1]
+            d = last.payment_date
+            n = self.notional(last.start)
+            df = discount_curve.df(d) if d >= val_date else float("nan")
+            disc = n * df if d >= val_date else 0.0
+            end_extra.append({
+                "flow_type": "principal_end",
+                "accrual_start": last.end, "accrual_end": last.end, "payment_date": d,
+                "period_days": 0, "day_count_fraction": 0.0,
+                "notional": n, "n_fixings": 0,
+                "historical_product": float("nan"), "projected_product": float("nan"),
+                "growth": float("nan"),
+                "compounded_coupon": float("nan"), "spread": float("nan"),
+                "effective_coupon": float("nan"),
+                "payment_amount": n, "df_to_payment": df, "discounted_cashflow": disc,
+            })
+        return pd.DataFrame(start_extra + rows + end_extra)
 
     def period_breakdown(self, val_date: date) -> pd.DataFrame:
         """One row per accrual period with the gross growth factor decomposed."""

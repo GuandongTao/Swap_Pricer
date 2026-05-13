@@ -37,6 +37,7 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         raise ValueError(f"Trade file {path} missing required fields: {sorted(missing)}")
     known = REQUIRED | {
         "floating_daycount", "floating_spread",
+        "fixed_principal_exchange", "floating_principal_exchange",
         "fixing_calendar", "payment_calendar",
         "fixing_calendar_extras", "payment_calendar_extras",
         "fixing_calendar_extras_file", "payment_calendar_extras_file",
@@ -53,6 +54,8 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         fixed_daycount=str(raw["fixed_daycount"]),
         floating_daycount=str(raw.get("floating_daycount", "ACT/360")),
         floating_spread=float(raw.get("floating_spread", 0.0)),
+        fixed_principal_exchange=str(raw.get("fixed_principal_exchange", "none")),
+        floating_principal_exchange=str(raw.get("floating_principal_exchange", "none")),
         fixing_calendar=str(raw.get("fixing_calendar", "NY_FED")),
         payment_calendar=str(raw.get("payment_calendar", "NY_FED")),
         fixing_calendar_extras=_to_date_list(raw.get("fixing_calendar_extras")),
