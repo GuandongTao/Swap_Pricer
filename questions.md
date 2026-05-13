@@ -19,6 +19,12 @@ Update this file as questions are answered (move resolved items to the bottom wi
 **How to confirm:** ask the curve provider, or back-check one known DF (e.g., compare to Bloomberg `SWPM` or any vendor screen for `2026-03-31` curve).
 **Alternatives to switch to:** `ContinuousACT360`, `SimpleACT360`, `ContinuousACT365`, `AnnualCompoundedACT365`. Change the `DEFAULT` in `src/swaps/rate_quoting.py` or pass `rate_quoting=...` to `ZeroCurve` / `ExcelCurveLoader`.
 
+### Q3a. Tenor → pillar date convention (resolved 2026-05-13)
+**Now assumed:** strict ACT/360 day math for tenor codes. `D=N`, `W=7N`, `M=30N`, `Y=360N` days from val_date. `ON=1`, `TN=2`.
+**Was previously:** calendar increments (1M = +1 calendar month, 1Y = +1 calendar year).
+**Effect at pillars:** an `NY` zero rate `r` discounts to exactly `(1+r)^(-N)` under annual-compounded ACT/360 (year-fraction = days/360 = N).
+**Trade-off acknowledged:** some curve providers anchor pillars at calendar dates (e.g., Bloomberg market-convention tenors). If your provider's curve was built that way, DFs will be biased at the long end. Back-check one pillar against a vendor screen to confirm.
+
 ### Q3. `ON` and `TN` pillar semantics
 **Currently assumed (more common version):** both are zero rates anchored at `val_date`, i.e.
 - `ON` pillar date = `val_date` + 1 calendar day (term ~1/360)

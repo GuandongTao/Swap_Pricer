@@ -17,7 +17,6 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
-from dateutil.relativedelta import relativedelta
 
 from .rate_quoting import DEFAULT, RateQuoting
 
@@ -25,10 +24,17 @@ _TENOR_RE = re.compile(r"^(\d+)([DWMY])$", re.IGNORECASE)
 
 
 def tenor_to_date(val_date: date, tenor: str) -> date:
-    """Convert a tenor code (e.g. 'ON', 'TN', '1W', '6M', '5Y') to a calendar pillar date.
+    """Convert a tenor code to a calendar pillar date under strict ACT/360 day math.
 
-    Per assumption Q3 (questions.md), 'ON' and 'TN' are zero rates anchored at
-    val_date with pillar dates val_date+1 and val_date+2 calendar days respectively.
+    Day counts:
+        D = N         W = 7*N         M = 30*N         Y = 360*N
+        ON = 1        TN = 2
+
+    Rationale: this keeps the year-fraction at any pillar exactly ``days/360 = N``
+    under ACT/360, so an annual-compounded ACT/360 zero rate ``r`` at the ``NY``
+    pillar discounts as ``(1+r)^(-N)``, a Y-year rate at the 5Y pillar as
+    ``(1+r)^(-5)``, etc. Alternative interpretation (1Y = 1 calendar year, year
+    fraction 365/360) is recorded in questions.md.
     """
     t = tenor.strip().upper()
     if t == "ON":
@@ -42,10 +48,10 @@ def tenor_to_date(val_date: date, tenor: str) -> date:
     if unit == "D":
         return val_date + timedelta(days=n)
     if unit == "W":
-        return val_date + timedelta(weeks=n)
+        return val_date + timedelta(days=7 * n)
     if unit == "M":
-        return val_date + relativedelta(months=n)
-    return val_date + relativedelta(years=n)
+        return val_date + timedelta(days=30 * n)
+    return val_date + timedelta(days=360 * n)
 
 
 @dataclass(frozen=True)
