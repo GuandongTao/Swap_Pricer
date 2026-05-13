@@ -22,10 +22,24 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+
+
+def _safe_excel_path(p: Path) -> Path:
+    """If `p` is locked (open in Excel), return a sibling timestamped path."""
+    try:
+        with open(p, "ab"):
+            pass
+        return p
+    except PermissionError:
+        stamp = time.strftime("%H%M%S")
+        alt = p.with_name(f"{p.stem}_{stamp}{p.suffix}")
+        print(f"[note] {p.name} appears open in Excel; writing to {alt.name} instead")
+        return alt
 
 # Make the package importable without `pip install -e`
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +53,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--val-date", default="2026-03-31", help="Valuation date (ISO). Default 2026-03-31.")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Data directory containing curves/.")
+    p.add_argument(
+        "--curve-file",
+        default=None,
+        help="Direct path to a CurvesYYYYMMDD.xlsx file. Overrides --data-dir lookup. "
+             "Use this to point at a real curve file outside the tracked data/ tree.",
+    )
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory for DF excel dumps.")
     p.add_argument(
         "--quoting",
@@ -59,13 +79,20 @@ def main() -> int:
     print("=" * 72)
     print(f"Discount-factor test")
     print(f"  val_date      = {val_date}")
-    print(f"  data_dir      = {args.data_dir}")
+    if args.curve_file:
+        print(f"  curve file    = {args.curve_file}  (overrides data_dir)")
+    else:
+        print(f"  data_dir      = {args.data_dir}")
     print(f"  rate quoting  = {quoting.name}")
     print("=" * 72)
 
     loader = ExcelCurveLoader(Path(args.data_dir) / "curves", rate_quoting=quoting)
-    sofr = loader.load(val_date, "SOFR")
-    ff = loader.load(val_date, "FEDFUNDS")
+    if args.curve_file:
+        sofr = loader.load_from_file(args.curve_file, val_date, "SOFR")
+        ff = loader.load_from_file(args.curve_file, val_date, "FEDFUNDS")
+    else:
+        sofr = loader.load(val_date, "SOFR")
+        ff = loader.load(val_date, "FEDFUNDS")
 
     # ---------------- (1) Pillar DFs (no interpolation) ----------------
     sofr_pillars = sofr.to_debug_frame()
@@ -93,7 +120,7 @@ def main() -> int:
     print(f"  match            = {abs(df_from_class - df_recomputed) < 1e-15}")
 
     # ---------------- (3) Excel dumps for spreadsheet inspection ----------------
-    pillars_path = out_dir / f"pillar_dfs_{val_date.isoformat()}.xlsx"
+    pillars_path = _safe_excel_path(out_dir / f"pillar_dfs_{val_date.isoformat()}.xlsx")
     with pd.ExcelWriter(pillars_path, engine="openpyxl") as w:
         sofr_pillars.to_excel(w, sheet_name="SOFR_pillars", index=False)
         ff_pillars.to_excel(w, sheet_name="FF_pillars", index=False)
@@ -127,7 +154,7 @@ def main() -> int:
     end = val_date + timedelta(days=args.grid_days)
     sofr_grid = sofr.df_grid_debug(val_date, end)
     ff_grid = ff.df_grid_debug(val_date, end)
-    grid_path = out_dir / f"df_grid_{val_date.isoformat()}.xlsx"
+    grid_path = _safe_excel_path(out_dir / f"df_grid_{val_date.isoformat()}.xlsx")
     with pd.ExcelWriter(grid_path, engine="openpyxl") as w:
         sofr_grid.to_excel(w, sheet_name="SOFR_daily", index=False)
         ff_grid.to_excel(w, sheet_name="FF_daily", index=False)

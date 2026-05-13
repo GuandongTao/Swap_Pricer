@@ -90,6 +90,32 @@ class ExcelCurveLoader(CurveLoader):
             raise ValueError(f"Unknown curve {curve_name!r}; known: SOFR, FEDFUNDS")
         return ZeroCurve(val_date, pillars, self.rate_quoting, name=key)
 
+    def load_from_file(self, path: str | Path, val_date: date, curve_name: str) -> ZeroCurve:
+        """Load directly from an explicit file path, bypassing the base_dir/filename convention.
+
+        Useful for ad-hoc inspection of curve files that live outside ``data/curves/``.
+        """
+        key = CANONICAL_NAME.get(curve_name.upper(), curve_name.upper())
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Curve file not found: {path}")
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        ws = wb[self.sheet_name]
+        pillars: dict[str, float] = {}
+        for row in ws.iter_rows(values_only=True):
+            if not row or row[0] is None:
+                continue
+            m = TICKER_RE.match(str(row[0]).strip())
+            if not m:
+                continue
+            index, tenor = m.group(1), m.group(2)
+            if index == key:
+                pillars[tenor] = float(row[1])
+        wb.close()
+        if not pillars:
+            raise ValueError(f"No {key} pillars found in {path}")
+        return ZeroCurve(val_date, pillars, self.rate_quoting, name=key)
+
 
 class ExcelFixingLoader(FixingLoader):
     """Load historical fixings from a CSV/XLSX with `date` and `rate` columns."""
