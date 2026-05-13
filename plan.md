@@ -21,6 +21,7 @@ Outputs: clean / dirty / accrued / DV01 per trade plus full cashflow detail, exp
 | Zero-rate quoting | Default continuously compounded ACT/360; `RateQuoting` strategy is pluggable |
 | OIS period coupon | Derived from two endpoint DFs (curve-implied), not by re-compounding daily forwards. Daily implied forward is displayed as an audit column. |
 | Past vs. future fixings | Split at val_date: historical product × curve-implied product |
+| Missing historical fixings | **Hard fail per trade** — `OISFloatingLeg._resolved_rate` raises `ValueError` if `fixing_date < val_date` and `FixingHistory.get(d)` is `None`. The Portfolio runner catches it, records the trade in `manifest.errors[]`, and continues with the remaining trades; the run ends `status="partial"`. Rationale: safer than silent fallbacks (carry-forward, front-end-rate substitute, period-skip) which can hide gaps in real history and produce wrong PV that looks plausible. Any softer policy must be an explicit opt-in flag, not the default. |
 | Fixed leg freq + DC | Per-trade; supports ACT/360, ACT/365F, 30/360, 30E/360, ACT/ACT-ISDA |
 | Payment delay | Per-trade `payment_delay_bdays` (default 0); shifts cash date only |
 | Lockout | Per-trade `lockout_bdays` (default 0); last N fixings frozen at the (N+1)th-to-last value |

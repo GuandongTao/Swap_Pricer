@@ -9,7 +9,7 @@ start_date: 2026-03-09         # first accrual day (effective)
 maturity_date: 2035-11-08      # last accrual end; principal + final coupon settle at maturity + 2 BD
 
 fixed_frequency: 1M            # monthly periods, rolling on the 8th (ModFollowing skip-weekend)
-fixed_daycount: ACT/360        # fixed coupon: N * R * days / 360
+fixed_daycount: 30/360        # fixed coupon: N * R * days / 360
 floating_daycount: ACT/360     # OIS compounding uses days/360
 floating_spread: 0.0
 
