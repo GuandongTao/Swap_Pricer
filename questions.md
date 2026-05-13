@@ -12,8 +12,8 @@ Update this file as questions are answered (move resolved items to the bottom wi
 **Impact if wrong:** none for correctness — the worst case is two fields carrying the same vector. Simplification only.
 
 ### Q2. Zero-rate quoting convention on the curve Excel
-**Now assumed (updated 2026-05-13):** **annual compounded ACT/360**, i.e. `DF(T) = (1 + r)^(-T / 360)`.
-**Was previously:** continuously compounded ACT/360.
+**Now assumed (updated 2026-05-13 PM):** **continuously compounded ACT/360**, i.e. `DF(T) = exp(-r · T / 360)`.
+**History:** Continuous (2026-05-12) → AnnualCompoundedACT360 (2026-05-13 AM) → Continuous (2026-05-13 PM, this entry). The annual-compounded numbers ran higher than benchmark; continuous lowers DF uniformly and matched closer.
 **File analyzed:** `Curves20260331.xlsx`. Both SOFR and FEDFUNDS zero rates are decimals (~0.036), but the file does not state the compounding convention.
 **Impact if wrong:** DFs will be biased — small at short tenors, larger at long tenors. All downstream PVs shift.
 **How to confirm:** ask the curve provider, or back-check one known DF (e.g., compare to Bloomberg `SWPM` or any vendor screen for `2026-03-31` curve).

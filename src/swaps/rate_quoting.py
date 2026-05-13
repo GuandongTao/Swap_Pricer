@@ -93,5 +93,8 @@ def get_rate_quoting(name: str) -> RateQuoting:
 
 
 # Default quoting convention used by ZeroCurve / ExcelCurveLoader unless overridden.
-# Switched from ContinuousACT360 -> AnnualCompoundedACT360 on 2026-05-13 per user direction.
-DEFAULT = AnnualCompoundedACT360()
+# 2026-05-12: ContinuousACT360
+# 2026-05-13 (am): AnnualCompoundedACT360
+# 2026-05-13 (pm): ContinuousACT360 -- annual-comp DFs ran high vs benchmark;
+#   continuous lowers DF uniformly (e^(-rT) < (1+r)^(-T) for r,T > 0).
+DEFAULT = ContinuousACT360()
