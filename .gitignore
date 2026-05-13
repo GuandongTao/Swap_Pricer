@@ -24,6 +24,13 @@ Thumbs.db
 # Excel lock files
 ~$*
 
-# Real market data drop at repo root.
-# data/curves/ contains synthetic SAMPLE data and is committed.
+# Real market data — single source of truth at data/curves/.
+# The curve files there are not committed; pull them from your data feed.
+data/curves/Curves*.xlsx
+
+# Legacy real-data drop location at repo root (still excluded for safety).
 /Curves*.xlsx
+
+# Golden-master snapshots are derived from real market data, so do not commit.
+# Regenerate locally with: REGENERATE_GOLDEN=1 pytest tests/test_golden_master.py
+tests/golden/*.json

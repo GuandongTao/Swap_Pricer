@@ -17,10 +17,20 @@ pytest -q
 python scripts/price_portfolio.py --val-date 2026-03-31 --debug
 ```
 
-## Sample data
+## Data layout
 
-`data/curves/Curves20260331.xlsx` is **synthetic** (flat 4.00% SOFR / 3.50% FF) — committed so the test suite and CLI smoke run work out of the box. To run against real market data, drop your `CurvesYYYYMMDD.xlsx` into `data/curves/` (this folder is tracked, so be deliberate about what you commit) and run with the matching `--val-date`. The real-data drop location at the repo root (`/Curves*.xlsx`) is gitignored.
+`data/curves/` is the **single source of truth** for curve files (both for the CLI and for the test suite). Curve files there are gitignored — drop your real `CurvesYYYYMMDD.xlsx` here and it stays local.
 
-`data/fixings/fedfunds.csv` is also synthetic (~3.65–5.30%).
+On a fresh clone, the folder is empty. Either:
+- supply a real curve file, or
+- bootstrap a synthetic placeholder:
+  ```powershell
+  python scripts\generate_synthetic_curve.py --out data\curves\Curves20260331.xlsx
+  ```
 
-`data/trades/SWAP_001..003.yaml` are sample trade definitions covering forward-start, in-progress, and short-maturity cases. Add your own `*.yaml` files and the loader will pick them up automatically.
+`data/fixings/fedfunds.csv` and `data/trades/SWAP_001..003.yaml` are committed synthetic samples. Replace or extend with your own.
+
+The golden-master JSON in `tests/golden/` is also gitignored because it encodes derived market data. After supplying a curve, pin a local baseline with:
+```powershell
+$env:REGENERATE_GOLDEN = "1"; pytest tests/test_golden_master.py; Remove-Item Env:\REGENERATE_GOLDEN
+```
