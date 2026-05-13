@@ -42,10 +42,10 @@ Both treated like any other zero pillar.
 **Defaults match:** no lag, no lockout (i.e. payment date = accrual end, all fixings observed).
 **Status:** awaiting trade definitions. Standard cleared OIS would be `payment_delay_bdays = 2`, `lockout_bdays = 0`.
 
-### Q6. NY Fed holiday calendar — is a static list acceptable for v1?
-**Currently assumed:** maintain a static list of NY Fed business holidays through ~2050 in `calendar_us.py`. Refresh annually.
-**Alternative:** use `pandas.tseries.holiday.USFederalHolidayCalendar` or `holidays` package.
-**Impact if wrong:** a holiday omission shifts one business day on rolls, fixings, payment delays. Material at period boundaries.
+### Q6. NY Fed holiday calendar — algorithmic, verified for 2026
+**Implementation:** holidays computed algorithmically in `src/swaps/calendar_us.py`. 11 federal holidays per year with the standard rules; Sunday-falling holidays shift forward to Monday (Fed Banks rule); Saturday-falling holidays are *not* shifted to Friday (Fed Banks stay open Friday per Fed's published note).
+**Verification (2026-05-13):** all 11 of our 2026 holidays match the official Federal Reserve Bank schedule at https://www.federalreserve.gov/aboutthefed/k8.htm exactly. 2027-2030 follow the same algorithmic rules; spot-check on demand. 2023-2025 are historical and not on the Fed's current page — our algorithmic output is consistent with the actually-observed dates but not vendor-verified.
+**One-off closures (e.g. presidential funerals)** are not derivable algorithmically; use per-trade `fixing_calendar_extras` or `fixing_calendar_extras_file` to add them.
 
 ### Q7. Pay-fixed vs receive-fixed — sign convention per trade
 **Currently assumed:** each `Swap` has a `pay_fixed: bool` field; PV reported from that party's perspective.
