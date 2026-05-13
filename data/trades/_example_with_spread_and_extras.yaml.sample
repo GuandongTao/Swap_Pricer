@@ -1,0 +1,29 @@
+# Example YAML showing the optional fields added 2026-05-12.
+# Rename to *.yaml (drop .sample) to make it pickup-able by the loader.
+trade_id: SWAP_EXAMPLE
+notional: 10000000
+pay_fixed: false              # receive fixed, pay floating
+fixed_rate: 0.04
+start_date: 2026-06-15
+maturity_date: 2031-06-15
+fixed_frequency: 1Y
+fixed_daycount: ACT/360
+floating_daycount: ACT/360
+
+# NEW: spread (in decimal). +25 bp over compounded FF.
+floating_spread: 0.0025
+
+# NEW: per-trade extra holidays. Combine inline list + file -- both are added on top of NY_FED.
+fixing_calendar: NY_FED
+fixing_calendar_extras:
+  - 2026-07-06               # our desk's blackout day
+  - 2026-12-31
+fixing_calendar_extras_file: data/calendars/desk_blackouts.csv   # optional CSV with a 'date' column
+# Same fields exist for payment_calendar:
+# payment_calendar_extras: [...]
+# payment_calendar_extras_file: ...
+
+payment_delay_bdays: 2
+lockout_bdays: 0
+business_day_convention: ModifiedFollowing
+description: "5Y receive-fixed at 4% + 25 bp spread, custom holidays"

@@ -1,0 +1,15 @@
+trade_id: SWAP_002
+notional: 20000000
+pay_fixed: true         # pay fixed, receive floating
+fixed_rate: 0.035
+start_date: 2024-03-15
+maturity_date: 2031-03-15
+fixed_frequency: 1Y
+fixed_daycount: ACT/360
+floating_daycount: ACT/360
+fixing_calendar: NY_FED
+payment_calendar: NY_FED
+payment_delay_bdays: 2
+lockout_bdays: 0
+business_day_convention: ModifiedFollowing
+description: "7Y in-progress pay-fixed $20M at 3.50%, T+2 payment lag"

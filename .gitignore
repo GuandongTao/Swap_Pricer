@@ -1,0 +1,29 @@
+# Generated artifacts
+/output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Editors
+.vscode/
+.idea/
+.ipynb_checkpoints/
+
+# OS noise
+.DS_Store
+Thumbs.db
+# Excel lock files
+~$*
+
+# Real market data drop at repo root.
+# data/curves/ contains synthetic SAMPLE data and is committed.
+/Curves*.xlsx

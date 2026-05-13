@@ -1,0 +1,60 @@
+"""Fixed leg: periodic coupons at a constant rate, per-trade day-count."""
+
+from __future__ import annotations
+
+from datetime import date
+
+import pandas as pd
+
+from ..conventions import DayCount
+from ..curve import ZeroCurve
+from ..notional import NotionalSchedule
+from ..schedule import AccrualPeriod
+from .base import Leg
+
+
+class FixedLeg(Leg):
+    def __init__(
+        self,
+        schedule: list[AccrualPeriod],
+        notional: NotionalSchedule,
+        fixed_rate: float,
+        daycount: DayCount,
+    ) -> None:
+        self.schedule = list(schedule)
+        self.notional = notional
+        self.fixed_rate = float(fixed_rate)
+        self.daycount = daycount
+
+    def cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
+        rows = []
+        for p in self.schedule:
+            dcf = self.daycount.year_fraction(p.start, p.end)
+            notional = self.notional(p.start)
+            payment_amount = notional * self.fixed_rate * dcf
+            df_pay = discount_curve.df(p.payment_date) if p.payment_date >= val_date else float("nan")
+            disc_cf = payment_amount * df_pay if p.payment_date >= val_date else 0.0
+            rows.append(
+                {
+                    "accrual_start": p.start,
+                    "accrual_end": p.end,
+                    "payment_date": p.payment_date,
+                    "day_count_fraction": dcf,
+                    "notional": notional,
+                    "coupon_rate": self.fixed_rate,
+                    "payment_amount": payment_amount,
+                    "df_to_payment": df_pay,
+                    "discounted_cashflow": disc_cf,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def accrued(self, val_date: date) -> float:
+        for p in self.schedule:
+            if p.start <= val_date < p.end:
+                dcf = self.daycount.year_fraction(p.start, val_date)
+                return self.notional(p.start) * self.fixed_rate * dcf
+        return 0.0
+
+    def to_debug_frame(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
+        return self.cashflows(val_date, discount_curve)

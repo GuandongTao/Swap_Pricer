@@ -1,0 +1,15 @@
+trade_id: SWAP_001
+notional: 10000000
+pay_fixed: false        # receive fixed, pay floating
+fixed_rate: 0.04
+start_date: 2026-06-15
+maturity_date: 2031-06-15
+fixed_frequency: 1Y
+fixed_daycount: ACT/360
+floating_daycount: ACT/360
+fixing_calendar: NY_FED
+payment_calendar: NY_FED
+payment_delay_bdays: 0
+lockout_bdays: 0
+business_day_convention: ModifiedFollowing
+description: "5Y forward-start receive-fixed $10M at 4.00%"
