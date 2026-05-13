@@ -125,10 +125,14 @@ class OISFloatingLeg(Leg):
         for f, nf, d, r, src in zip(fixings, nexts, weights, applied_rates, sources):
             rows.append(
                 {
-                    "fixing_date": f,
-                    "accrual_start": p.start,
-                    "accrual_end": p.end,
+                    # Outer payment-period context (constant within a period)
+                    "period_start": p.start,
+                    "period_end": p.end,
                     "payment_date": p.payment_date,
+                    # Per-fixing sub-accrual (one row per business day)
+                    "fixing_date": f,
+                    "accrual_start": f,
+                    "accrual_end": nf,
                     "day_count": d,
                     "reset_rate": r,
                     "rate_source": src,
@@ -196,6 +200,55 @@ class OISFloatingLeg(Leg):
         rows: list[dict] = []
         for p in self.schedule:
             rows.extend(self._period_fixing_rows(p, val_date))
+        return pd.DataFrame(rows)
+
+    def period_cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
+        """One row per accrual period -- monthly-compounded view that mirrors
+        the fixed-leg cashflow granularity for side-by-side comparison.
+
+        Columns parallel ``FixedLeg.cashflows()`` with OIS additions:
+        ``historical_product``, ``projected_product``, ``growth``,
+        ``compounded_coupon``, ``effective_coupon``, ``n_fixings``.
+        """
+        rows: list[dict] = []
+        for p in self.schedule:
+            sub = self._period_fixing_rows(p, val_date)
+            if not sub:
+                continue
+            hist_g, proj_g = 1.0, 1.0
+            for row in sub:
+                factor = 1.0 + row["reset_rate"] * row["day_count"] / 360.0
+                if row["fixing_date"] < val_date:
+                    hist_g *= factor
+                else:
+                    proj_g *= factor
+            growth = hist_g * proj_g
+            D = (p.end - p.start).days
+            comp_rate = (growth - 1.0) * 360.0 / D
+            notional = self.notional(p.start)
+            period_cf = notional * ((growth - 1.0) + self.spread * D / 360.0)
+            df_pay = discount_curve.df(p.payment_date) if p.payment_date >= val_date else float("nan")
+            disc_cf = period_cf * df_pay if p.payment_date >= val_date else 0.0
+            rows.append(
+                {
+                    "accrual_start": p.start,
+                    "accrual_end": p.end,
+                    "payment_date": p.payment_date,
+                    "period_days": D,
+                    "day_count_fraction": D / 360.0,
+                    "notional": notional,
+                    "n_fixings": len(sub),
+                    "historical_product": hist_g,
+                    "projected_product": proj_g,
+                    "growth": growth,
+                    "compounded_coupon": comp_rate,
+                    "spread": self.spread,
+                    "effective_coupon": comp_rate + self.spread,
+                    "payment_amount": period_cf,
+                    "df_to_payment": df_pay,
+                    "discounted_cashflow": disc_cf,
+                }
+            )
         return pd.DataFrame(rows)
 
     def period_breakdown(self, val_date: date) -> pd.DataFrame:

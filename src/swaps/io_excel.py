@@ -121,6 +121,8 @@ def write_trade_debug_workbook(
         swap.floating.fixings_debug(val_date).to_excel(w, sheet_name="FloatingFixings", index=False)
         swap.floating.period_breakdown(val_date).to_excel(w, sheet_name="FloatingPeriods", index=False)
         swap.floating.cashflows(val_date, sofr).to_excel(w, sheet_name="FloatingCF", index=False)
+        # Monthly-compounded view mirroring the fixed-leg cashflow granularity
+        swap.floating.period_cashflows(val_date, sofr).to_excel(w, sheet_name="FloatingCF_byPeriod", index=False)
         swap.fixed.cashflows(val_date, sofr).to_excel(w, sheet_name="FixedCF", index=False)
 
 

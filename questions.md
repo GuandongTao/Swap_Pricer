@@ -19,11 +19,10 @@ Update this file as questions are answered (move resolved items to the bottom wi
 **How to confirm:** ask the curve provider, or back-check one known DF (e.g., compare to Bloomberg `SWPM` or any vendor screen for `2026-03-31` curve).
 **Alternatives to switch to:** `ContinuousACT360`, `SimpleACT360`, `ContinuousACT365`, `AnnualCompoundedACT365`. Change the `DEFAULT` in `src/swaps/rate_quoting.py` or pass `rate_quoting=...` to `ZeroCurve` / `ExcelCurveLoader`.
 
-### Q3a. Tenor → pillar date convention (resolved 2026-05-13)
-**Now assumed:** strict ACT/360 day math for tenor codes. `D=N`, `W=7N`, `M=30N`, `Y=360N` days from val_date. `ON=1`, `TN=2`.
-**Was previously:** calendar increments (1M = +1 calendar month, 1Y = +1 calendar year).
-**Effect at pillars:** an `NY` zero rate `r` discounts to exactly `(1+r)^(-N)` under annual-compounded ACT/360 (year-fraction = days/360 = N).
-**Trade-off acknowledged:** some curve providers anchor pillars at calendar dates (e.g., Bloomberg market-convention tenors). If your provider's curve was built that way, DFs will be biased at the long end. Back-check one pillar against a vendor screen to confirm.
+### Q3a. Tenor → pillar date convention (resolved 2026-05-13 PM)
+**Now assumed:** **calendar-tenor convention.** `ND=+N days`, `NW=+N weeks`, `NM=+N calendar months`, `NY=+N calendar years`. `ON=+1 day`, `TN=+2 days`.
+**Reason:** benchmark curve dates (`1Y → 2027-03-31`, `50Y → 2076-03-31`) confirm calendar dating. DF formula stays ACT/360 (`T = actual_days / 360`), which produced DFs closest to benchmark; switching the DF formula to /365 or /ACT moved further away.
+**History:** Calendar (2026-05-12) → strict 360-day (2026-05-13 AM) → Calendar (2026-05-13 PM, this entry).
 
 ### Q3. `ON` and `TN` pillar semantics
 **Currently assumed (more common version):** both are zero rates anchored at `val_date`, i.e.
@@ -87,3 +86,5 @@ business_day_convention: ModifiedFollowing
 
 - **2026-05-12 — Floating spread**: per-trade `floating_spread` (decimal, default 0.0) added to the trade YAML schema. Applied per ISDA OIS convention: `period_cf = N * ((growth - 1) + spread * D / 360)`. Effective coupon column added to the floating cashflow frame.
 - **2026-05-12 — Customized calendars**: per-trade `fixing_calendar_extras` (inline list of dates) and `fixing_calendar_extras_file` (CSV / TXT / XLSX path) supported, on top of the named base calendar. Same fields exist for `payment_calendar_*`.
+- **2026-05-13 — Floating-leg per-row schedule**: the per-row `accrual_start` / `accrual_end` columns in the floating cashflow frame are now the **per-fixing sub-accrual bounds** (one row per business day in the period). New columns `period_start` / `period_end` carry the outer payment-period bounds. Coupon is compounded across all per-fixing rows at the period end and discounted at the SOFR DF on `payment_date`.
+- **2026-05-13 — SWAP_DEBUG_001 conventions** (updated 2026-05-13 PM): hand-debug test trade. 500,000,000 notional, pay floating / receive 5.41% fixed, ACT/360 day-count on both legs (fixed coupon = `N × R × days/360`), monthly periods rolling on the **8th** (ModifiedFollowing — skip weekend by rolling forward to next business day), payment delay **2** NY-Fed business days (weekends skipped), no lockout, no spread, NY-Fed fixing calendar. First accrual day 2026-03-09; last accrual ends 2035-11-08; final payment derived as 2035-11-08 + 2 BD.

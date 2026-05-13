@@ -24,9 +24,12 @@ Thumbs.db
 # Excel lock files
 ~$*
 
-# Real market data — single source of truth at data/curves/.
-# The curve files there are not committed; pull them from your data feed.
+# Real market data — single source of truth at data/curves/ and data/fixings/.
+# The files there are not committed; pull them from your data feed.
 data/curves/Curves*.xlsx
+data/fixings/*.csv
+data/fixings/*.xlsx
+data/fixings/*.xls
 
 # Legacy real-data drop location at repo root (still excluded for safety).
 /Curves*.xlsx

@@ -136,9 +136,15 @@ Two tabs as originally specified — floating cashflow and fixed cashflow with f
 
 ### Floating-leg cashflow columns (per fixing row)
 
-`run_id · val_date · run_date · git_sha · trade_id · fixing_date · accrual_start · accrual_end · payment_date · day_count · reset_rate · implied_daily_fwd · df_to_fixing · df_to_payment · compounded_coupon* · period_cashflow* · discounted_cashflow*`
+`run_id · val_date · run_date · git_sha · trade_id · period_start · period_end · payment_date · fixing_date · accrual_start · accrual_end · day_count · reset_rate · rate_source · implied_daily_fwd · df_to_fixing · df_to_payment · spread · compounded_coupon* · effective_coupon* · period_cashflow* · discounted_cashflow*`
 
 `*` = filled only on the last fixing row of each period.
+
+Semantics:
+- `period_start` / `period_end` — outer payment-period bounds (constant across all rows within one period). `payment_date = period_end + payment_delay_bdays` (NY-Fed business days).
+- `accrual_start` / `accrual_end` — **per-fixing** sub-interval. `accrual_start = fixing_date`; `accrual_end = next fixing date` (or `period_end` on the last fixing of a period). `day_count = (accrual_end − accrual_start).days`.
+- `reset_rate` — the rate that applies for [`accrual_start`, `accrual_end`). For past fixings it comes from `FixingHistory`; for future fixings, the simple-ACT/360 forward `(DF(f)/DF(next_f) − 1) × 360/days`.
+- `compounded_coupon` = `(∏(1 + r_i · d_i/360) − 1) · 360 / D` where `D = period_end − period_start` in calendar days.
 
 ### Fixed-leg cashflow columns
 

@@ -148,7 +148,7 @@ def test_lockout_freezes_last_n_rates():
     rows = leg.fixings_debug(VAL)
     # Pick the last period
     last_period_start = sch[-1].start
-    period_rows = rows[rows["accrual_start"] == last_period_start].reset_index(drop=True)
+    period_rows = rows[rows["period_start"] == last_period_start].reset_index(drop=True)
     n = len(period_rows)
     assert n >= 4
     last_normal_rate = period_rows.loc[n - 3, "reset_rate"]
@@ -178,4 +178,4 @@ def test_payment_delay_shifts_payment_date_and_df():
     cf = leg.cashflows(VAL, c)
     last_rows = cf.dropna(subset=["period_cashflow"])
     for _, row in last_rows.iterrows():
-        assert row["payment_date"] == NY_FED.add_business_days(row["accrual_end"], 2)
+        assert row["payment_date"] == NY_FED.add_business_days(row["period_end"], 2)

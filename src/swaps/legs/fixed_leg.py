@@ -39,6 +39,7 @@ class FixedLeg(Leg):
                     "accrual_start": p.start,
                     "accrual_end": p.end,
                     "payment_date": p.payment_date,
+                    "period_days": (p.end - p.start).days,
                     "day_count_fraction": dcf,
                     "notional": notional,
                     "coupon_rate": self.fixed_rate,

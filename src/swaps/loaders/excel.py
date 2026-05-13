@@ -118,30 +118,73 @@ class ExcelCurveLoader(CurveLoader):
 
 
 class ExcelFixingLoader(FixingLoader):
-    """Load historical fixings from a CSV/XLSX with `date` and `rate` columns."""
+    """Load historical fixings from a CSV/XLSX file.
+
+    Accepted layouts (auto-detected):
+      * 2-column ``date, rate`` -- with or without a header row.
+      * 3-column ``ticker, date, rate`` -- with or without a header row.
+        When a ticker column is present, rows whose ticker contains
+        ``index_name`` (case-insensitive, hyphens/underscores ignored) are kept;
+        if no rows match, all rows are kept.
+
+    Date parsing is flexible: ISO (YYYY-MM-DD), US (M/D/YYYY), or anything
+    pandas can coerce via ``to_datetime``.
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
 
-    def load(self, index_name: str) -> FixingHistory:  # noqa: ARG002 - single-index for now
+    def load(self, index_name: str) -> FixingHistory:
         if not self.path.exists():
             return FixingHistory({}, name=index_name)
+
         if self.path.suffix.lower() == ".csv":
-            df = pd.read_csv(self.path)
+            raw = pd.read_csv(self.path, header=None, skip_blank_lines=True, dtype=str)
         else:
-            df = pd.read_excel(self.path)
-        cols = {c.lower(): c for c in df.columns}
-        if "date" not in cols or "rate" not in cols:
-            raise ValueError(f"Fixings file {self.path} must have 'date' and 'rate' columns")
-        mapping = {}
-        for _, row in df.iterrows():
-            d = row[cols["date"]]
-            r = row[cols["rate"]]
-            if pd.isna(d) or pd.isna(r):
+            raw = pd.read_excel(self.path, header=None, dtype=str)
+        raw = raw.dropna(how="all").reset_index(drop=True)
+        if raw.empty:
+            return FixingHistory({}, name=index_name)
+
+        # Detect header by attempting to parse the last column of the first row as a number
+        try:
+            float(str(raw.iloc[0, -1]).strip())
+            has_header = False
+        except (ValueError, TypeError):
+            has_header = True
+        if has_header:
+            raw = raw.iloc[1:].reset_index(drop=True)
+
+        ncols = raw.shape[1]
+        if ncols < 2:
+            raise ValueError(f"Fixings file {self.path} needs >=2 columns (date,rate); got {ncols}")
+        if ncols == 2:
+            ticker_col, date_col, rate_col = None, 0, 1
+        else:
+            ticker_col, date_col, rate_col = 0, 1, 2
+
+        # Filter by ticker substring match, if applicable
+        if ticker_col is not None and index_name:
+            norm = index_name.upper().replace("_", "").replace("-", "")
+            mask = (
+                raw[ticker_col].astype(str).str.upper()
+                .str.replace("_", "", regex=False)
+                .str.replace("-", "", regex=False)
+                .str.contains(norm, na=False)
+            )
+            if mask.any():
+                raw = raw[mask].reset_index(drop=True)
+
+        mapping: dict[date, float] = {}
+        for _, row in raw.iterrows():
+            d_raw, r_raw = row[date_col], row[rate_col]
+            if pd.isna(d_raw) or pd.isna(r_raw):
                 continue
-            if isinstance(d, str):
-                d = datetime.strptime(d, "%Y-%m-%d").date()
-            elif hasattr(d, "date"):
-                d = d.date()
-            mapping[d] = float(r)
+            d = pd.to_datetime(str(d_raw).strip(), errors="coerce")
+            if pd.isna(d):
+                continue
+            try:
+                mapping[d.date()] = float(str(r_raw).strip())
+            except (ValueError, TypeError):
+                continue
         return FixingHistory(mapping, name=index_name)

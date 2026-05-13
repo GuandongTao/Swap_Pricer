@@ -17,6 +17,7 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 from .rate_quoting import DEFAULT, RateQuoting
 
@@ -24,17 +25,21 @@ _TENOR_RE = re.compile(r"^(\d+)([DWMY])$", re.IGNORECASE)
 
 
 def tenor_to_date(val_date: date, tenor: str) -> date:
-    """Convert a tenor code to a calendar pillar date under strict ACT/360 day math.
+    """Convert a tenor code to a calendar pillar date.
 
-    Day counts:
-        D = N         W = 7*N         M = 30*N         Y = 360*N
-        ON = 1        TN = 2
+    Pillar layout (calendar-tenor convention, matches Bloomberg/SWPM-style curves):
+        ON = +1 cal day            TN = +2 cal days
+        ND = +N cal days           NW = +N*7 cal days
+        NM = +N cal months         NY = +N cal years   (via dateutil.relativedelta)
 
-    Rationale: this keeps the year-fraction at any pillar exactly ``days/360 = N``
-    under ACT/360, so an annual-compounded ACT/360 zero rate ``r`` at the ``NY``
-    pillar discounts as ``(1+r)^(-N)``, a Y-year rate at the 5Y pillar as
-    ``(1+r)^(-5)``, etc. Alternative interpretation (1Y = 1 calendar year, year
-    fraction 365/360) is recorded in questions.md.
+    The year-fraction inside the DF formula is independent of this mapping --
+    it comes from the chosen RateQuoting strategy (e.g. ACT/360 uses
+    ``actual_days_from_val_date / 360``, so a 1Y pillar lands at val_date + 1
+    calendar year, ~365 days away, T ~= 1.0139 under ACT/360).
+
+    The alternative "strict day-count" interpretation (1Y = 360 days, 50Y =
+    18000 days) is documented in questions.md Q3a; it makes the year-fraction
+    exactly N at each NY pillar but mismatches calendar-tenor curve providers.
     """
     t = tenor.strip().upper()
     if t == "ON":
@@ -48,10 +53,10 @@ def tenor_to_date(val_date: date, tenor: str) -> date:
     if unit == "D":
         return val_date + timedelta(days=n)
     if unit == "W":
-        return val_date + timedelta(days=7 * n)
+        return val_date + timedelta(weeks=n)
     if unit == "M":
-        return val_date + timedelta(days=30 * n)
-    return val_date + timedelta(days=360 * n)
+        return val_date + relativedelta(months=n)
+    return val_date + relativedelta(years=n)
 
 
 @dataclass(frozen=True)
