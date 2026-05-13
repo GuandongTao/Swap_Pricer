@@ -12,11 +12,12 @@ Update this file as questions are answered (move resolved items to the bottom wi
 **Impact if wrong:** none for correctness — the worst case is two fields carrying the same vector. Simplification only.
 
 ### Q2. Zero-rate quoting convention on the curve Excel
-**Currently assumed:** continuously compounded ACT/360, i.e. `DF(T) = exp(-r · T / 360)`.
+**Now assumed (updated 2026-05-13):** **annual compounded ACT/360**, i.e. `DF(T) = (1 + r)^(-T / 360)`.
+**Was previously:** continuously compounded ACT/360.
 **File analyzed:** `Curves20260331.xlsx`. Both SOFR and FEDFUNDS zero rates are decimals (~0.036), but the file does not state the compounding convention.
 **Impact if wrong:** DFs will be biased — small at short tenors, larger at long tenors. All downstream PVs shift.
 **How to confirm:** ask the curve provider, or back-check one known DF (e.g., compare to Bloomberg `SWPM` or any vendor screen for `2026-03-31` curve).
-**Alternatives to switch to:** `SimpleACT360` (`DF = 1/(1 + r·T/360)`), `ContinuousACT365`, `AnnualCompoundedACT365`. One-line change per curve.
+**Alternatives to switch to:** `ContinuousACT360`, `SimpleACT360`, `ContinuousACT365`, `AnnualCompoundedACT365`. Change the `DEFAULT` in `src/swaps/rate_quoting.py` or pass `rate_quoting=...` to `ZeroCurve` / `ExcelCurveLoader`.
 
 ### Q3. `ON` and `TN` pillar semantics
 **Currently assumed (more common version):** both are zero rates anchored at `val_date`, i.e.

@@ -65,8 +65,23 @@ class AnnualCompoundedACT365(RateQuoting):
         return df ** (-365.0 / days) - 1.0
 
 
+class AnnualCompoundedACT360(RateQuoting):
+    """DF(T) = (1 + r)^(-T_days / 360). Time measured ACT/360, compounded annually."""
+
+    name = "AnnualCompoundedACT360"
+
+    def rate_to_df(self, rate: float, days: int) -> float:
+        return (1.0 + rate) ** (-days / 360.0)
+
+    def df_to_rate(self, df: float, days: int) -> float:
+        return df ** (-360.0 / days) - 1.0
+
+
 _REGISTRY: dict[str, RateQuoting] = {
-    cls().name: cls() for cls in (ContinuousACT360, SimpleACT360, ContinuousACT365, AnnualCompoundedACT365)
+    cls().name: cls() for cls in (
+        ContinuousACT360, SimpleACT360, ContinuousACT365,
+        AnnualCompoundedACT365, AnnualCompoundedACT360,
+    )
 }
 
 
@@ -77,4 +92,6 @@ def get_rate_quoting(name: str) -> RateQuoting:
         raise ValueError(f"Unknown RateQuoting {name!r}; known: {sorted(_REGISTRY)}") from e
 
 
-DEFAULT = ContinuousACT360()
+# Default quoting convention used by ZeroCurve / ExcelCurveLoader unless overridden.
+# Switched from ContinuousACT360 -> AnnualCompoundedACT360 on 2026-05-13 per user direction.
+DEFAULT = AnnualCompoundedACT360()
