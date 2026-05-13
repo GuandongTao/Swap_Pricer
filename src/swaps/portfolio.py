@@ -57,6 +57,8 @@ class Portfolio:
         timings: dict[str, float] = {}
         per_trade_timings: dict[str, float] = {}
 
+        run_start = time.perf_counter()
+        _log.info("Loading curves and fixings for val_date=%s ...", val_date)
         with _timed(timings, "load_curves"):
             sofr = self.curve_loader.load(val_date, "SOFR")
             ff = self.curve_loader.load(val_date, "FEDFUNDS")
@@ -66,24 +68,51 @@ class Portfolio:
             trades = self.trade_loader.load_all()
         md = MarketData(val_date=val_date, discount_curve=sofr, projection_curve=ff, fixings=fixings)
         manifest.trade_count = len(trades)
+        _log.info(
+            "Loaded %d pillars SOFR / %d pillars FF / %d fixings / %d trades  (%.2fs)",
+            len(sofr.pillars), len(ff.pillars), len(fixings), len(trades),
+            time.perf_counter() - run_start,
+        )
 
         valuations: list[SwapValuation] = []
         swaps_by_id: dict[str, "Swap"] = {}
+        n_total = len(trades)
+        priced_count = 0
+        failed_count = 0
         with _timed(timings, "price_all"):
-            for td in trades:
+            for i, td in enumerate(trades, start=1):
                 t0 = time.perf_counter()
+                ok = False
+                err: str | None = None
                 try:
                     swap = build_swap(td, ff, fixings)
                     v = self.pricer.price(swap, md)
                     valuations.append(v)
                     swaps_by_id[v.trade_id] = swap
+                    ok = True
                 except Exception as e:
+                    err = str(e).splitlines()[0][:120]
                     manifest.errors.append(f"{td.trade_id}: {e}")
-                per_trade_timings[td.trade_id] = time.perf_counter() - t0
+                dt = time.perf_counter() - t0
+                per_trade_timings[td.trade_id] = dt
+                elapsed = time.perf_counter() - run_start
+                if ok:
+                    priced_count += 1
+                    _log.info(
+                        "[%d/%d] %s  priced in %5.2fs   priced=%d failed=%d  elapsed %5.1fs",
+                        i, n_total, td.trade_id, dt, priced_count, failed_count, elapsed,
+                    )
+                else:
+                    failed_count += 1
+                    _log.warning(
+                        "[%d/%d] %s  FAILED: %s   priced=%d failed=%d  elapsed %5.1fs",
+                        i, n_total, td.trade_id, err, priced_count, failed_count, elapsed,
+                    )
 
         # Excel and Parquet writers need a tz-naive datetime (UTC seconds).
         run_date = manifest.run_date.replace(tzinfo=None)
         portfolio_path = out_dir / f"portfolio_{val_date.isoformat()}.xlsx"
+        _log.info("Writing portfolio workbook -> %s", portfolio_path)
         with _timed(timings, "write_portfolio_xlsx"):
             write_portfolio_workbook(
                 portfolio_path, valuations, {"SOFR": sofr, "FEDFUNDS": ff},
@@ -92,22 +121,31 @@ class Portfolio:
         manifest.outputs["portfolio_xlsx"] = str(portfolio_path)
 
         if write_detail:
+            _log.info("Writing %d detail workbooks ...", len(valuations))
             with _timed(timings, "write_detail_xlsx"):
                 detail_dir = out_dir / "detail"
-                for v in valuations:
+                for i, v in enumerate(valuations, start=1):
+                    t0 = time.perf_counter()
                     p = detail_dir / f"{v.trade_id}.xlsx"
                     write_trade_detail_workbook(p, v, manifest.run_id, run_date, manifest.git_sha)
+                    _log.info("  detail [%d/%d] %s.xlsx (%.2fs)", i, len(valuations), v.trade_id,
+                              time.perf_counter() - t0)
                 manifest.outputs["detail_dir"] = str(detail_dir)
 
         if write_debug:
+            _log.info("Writing %d debug workbooks ...", len(valuations))
             with _timed(timings, "write_debug_xlsx"):
                 debug_dir = out_dir / "debug"
-                for v in valuations:
+                for i, v in enumerate(valuations, start=1):
+                    t0 = time.perf_counter()
                     p = debug_dir / f"{v.trade_id}_debug.xlsx"
                     write_trade_debug_workbook(p, swaps_by_id[v.trade_id], val_date, sofr, ff, fixings)
+                    _log.info("  debug  [%d/%d] %s_debug.xlsx (%.2fs)", i, len(valuations), v.trade_id,
+                              time.perf_counter() - t0)
                 manifest.outputs["debug_dir"] = str(debug_dir)
 
         if write_parquet:
+            _log.info("Writing parquet outputs ...")
             with _timed(timings, "write_parquet"):
                 pq_dir = out_dir / "parquet" / val_date.isoformat()
                 paths = write_parquet_outputs(
