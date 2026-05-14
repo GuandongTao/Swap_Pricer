@@ -41,6 +41,7 @@ class RunManifest:
     input_files: dict[str, str] = field(default_factory=dict)
     outputs: dict[str, str] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     timings: dict[str, float] = field(default_factory=dict)
     per_trade_timings: dict[str, float] = field(default_factory=dict)
 

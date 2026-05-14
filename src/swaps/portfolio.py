@@ -19,6 +19,8 @@ def _timed(timings: dict, label: str):
     finally:
         timings[label] = time.perf_counter() - t0
 
+import pandas as pd
+
 from .curve import ZeroCurve
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
@@ -83,20 +85,54 @@ class Portfolio:
             for i, td in enumerate(trades, start=1):
                 t0 = time.perf_counter()
                 ok = False
+                matured = False
                 err: str | None = None
                 try:
-                    swap = build_swap(td, ff, fixings)
-                    v = self.pricer.price(swap, md)
-                    valuations.append(v)
-                    swaps_by_id[v.trade_id] = swap
-                    ok = True
+                    if td.maturity_date < val_date:
+                        matured = True
+                        msg = (
+                            f"{td.trade_id}: matured (maturity {td.maturity_date} < val_date {val_date}); "
+                            "valuation set to 0"
+                        )
+                        manifest.warnings.append(msg)
+                        v = SwapValuation(
+                            trade_id=td.trade_id,
+                            val_date=val_date,
+                            clean=0.0, dirty=0.0, accrued=0.0, dv01=0.0,
+                            pv_fixed=0.0, pv_floating=0.0,
+                            fixed_cf=pd.DataFrame(),
+                            floating_cf=pd.DataFrame(),
+                            meta={
+                                "matured": True,
+                                "notional": td.notional,
+                                "fixed_rate": td.fixed_rate,
+                                "start_date": td.start_date,
+                                "maturity_date": td.maturity_date,
+                            },
+                        )
+                        valuations.append(v)
+                        ok = True
+                    else:
+                        swap = build_swap(td, ff, fixings)
+                        v = self.pricer.price(swap, md)
+                        valuations.append(v)
+                        swaps_by_id[v.trade_id] = swap
+                        ok = True
                 except Exception as e:
                     err = str(e).splitlines()[0][:120]
                     manifest.errors.append(f"{td.trade_id}: {e}")
                 dt = time.perf_counter() - t0
                 per_trade_timings[td.trade_id] = dt
                 elapsed = time.perf_counter() - run_start
-                if ok:
+                if matured:
+                    priced_count += 1
+                    _log.warning(
+                        "[%d/%d] %s  MATURED (maturity %s < val_date %s) -> value 0   "
+                        "priced=%d failed=%d  elapsed %5.1fs",
+                        i, n_total, td.trade_id, td.maturity_date, val_date,
+                        priced_count, failed_count, elapsed,
+                    )
+                elif ok:
                     priced_count += 1
                     _log.info(
                         "[%d/%d] %s  priced in %5.2fs   priced=%d failed=%d  elapsed %5.1fs",
@@ -125,6 +161,9 @@ class Portfolio:
             with _timed(timings, "write_detail_xlsx"):
                 detail_dir = out_dir / "detail"
                 for i, v in enumerate(valuations, start=1):
+                    if v.meta.get("matured"):
+                        _log.info("  detail [%d/%d] %s skipped (matured)", i, len(valuations), v.trade_id)
+                        continue
                     t0 = time.perf_counter()
                     p = detail_dir / f"{v.trade_id}.xlsx"
                     write_trade_detail_workbook(p, v, manifest.run_id, run_date, manifest.git_sha)
@@ -137,6 +176,9 @@ class Portfolio:
             with _timed(timings, "write_debug_xlsx"):
                 debug_dir = out_dir / "debug"
                 for i, v in enumerate(valuations, start=1):
+                    if v.meta.get("matured") or v.trade_id not in swaps_by_id:
+                        _log.info("  debug  [%d/%d] %s skipped (matured)", i, len(valuations), v.trade_id)
+                        continue
                     t0 = time.perf_counter()
                     p = debug_dir / f"{v.trade_id}_debug.xlsx"
                     write_trade_debug_workbook(p, swaps_by_id[v.trade_id], val_date, sofr, ff, fixings)
