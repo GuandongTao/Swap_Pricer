@@ -13,6 +13,10 @@ fixed_daycount: 30/360        # fixed coupon: N * R * days / 360
 floating_daycount: ACT/360     # OIS compounding uses days/360
 floating_spread: 0.0
 
+# Principal payback at maturity on both legs (PV-neutral for the swap holder; visibility only)
+fixed_principal_exchange: end
+floating_principal_exchange: end
+
 fixing_calendar: NY_FED
 payment_calendar: NY_FED
 business_day_convention: ModifiedFollowing
