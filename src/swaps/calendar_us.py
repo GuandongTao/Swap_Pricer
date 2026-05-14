@@ -13,7 +13,9 @@ from datetime import date, timedelta
 from functools import lru_cache
 from typing import Iterable, Literal
 
-BusinessDayConvention = Literal["Following", "ModifiedFollowing", "Preceding", "ModifiedPreceding", "None"]
+BusinessDayConvention = Literal[
+    "Following", "ModifiedFollowing", "Preceding", "ModifiedPreceding", "Nearest", "None", "NoAdjust"
+]
 
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
@@ -97,7 +99,7 @@ class USCalendar:
         return cur
 
     def roll(self, d: date, bdc: BusinessDayConvention) -> date:
-        if bdc == "None" or self.is_business_day(d):
+        if bdc in ("None", "NoAdjust") or self.is_business_day(d):
             return d
         if bdc == "Following":
             return self.next_business_day(d)
@@ -109,6 +111,10 @@ class USCalendar:
         if bdc == "ModifiedPreceding":
             p = self.prev_business_day(d)
             return self.next_business_day(d) if p.month != d.month else p
+        if bdc == "Nearest":
+            n = self.next_business_day(d)
+            p = self.prev_business_day(d)
+            return n if (n - d).days <= (d - p).days else p
         raise ValueError(f"Unknown BusinessDayConvention: {bdc!r}")
 
 

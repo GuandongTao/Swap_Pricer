@@ -29,7 +29,23 @@ fixing_calendar: NY_FED
 payment_calendar: NY_FED
 payment_delay_bdays: 2           # business-day lag from accrual end to cash payment
 lockout_bdays: 0
-business_day_convention: ModifiedFollowing
+business_day_convention: ModifiedFollowing      # global fallback for per-leg rolls below
+
+# --- Per-leg roll conventions (optional) ---
+# Each accepts: None / NoAdjust / Following / ModifiedFollowing (default) /
+#               Preceding / ModifiedPreceding / Nearest.
+# Leave blank ("") to fall back to `business_day_convention` above.
+#
+# Fixed leg rolls
+#   fixed_spot_roll: ""                 # rolls the unadjusted effective/start date
+#   fixed_accrual_roll: ""              # rolls each unadjusted accrual end
+#   fixed_pay_roll: ""                  # rolls each unadjusted payment date
+#
+# Floating leg rolls
+#   floating_accrual_roll: ""           # rolls each unadjusted accrual end
+#   floating_pay_roll: ""               # rolls each unadjusted payment date
+#   floating_fixing_roll: Preceding     # rolls the lookback-shifted observation date
+#   floating_fixing_lag_bdays: 0        # OIS lookback in BDs (0 = rate set in advance)
 
 description: "Free text — optional, retained in the SwapValuation meta dict."
 

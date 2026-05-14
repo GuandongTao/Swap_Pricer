@@ -40,8 +40,8 @@ class FixedLeg(Leg):
             dcf = self.daycount.year_fraction(p.start, p.end)
             notional = self.notional(p.start)
             payment_amount = notional * self.fixed_rate * dcf
-            df_pay = discount_curve.df(p.payment_date) if p.payment_date >= val_date else float("nan")
-            disc_cf = payment_amount * df_pay if p.payment_date >= val_date else 0.0
+            df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
+            disc_cf = payment_amount * df_pay if p.payment_date > val_date else 0.0
             rows.append(
                 {
                     "flow_type": "coupon",
@@ -62,8 +62,8 @@ class FixedLeg(Leg):
         if self.principal_exchange in ("start", "both"):
             d = self.schedule[0].start
             n = self.notional(d)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = -n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = -n * df if d > val_date else 0.0
             rows.insert(0, {
                 "flow_type": "principal_start",
                 "accrual_start": d,
@@ -81,8 +81,8 @@ class FixedLeg(Leg):
             last = self.schedule[-1]
             d = last.payment_date
             n = self.notional(last.start)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = n * df if d > val_date else 0.0
             rows.append({
                 "flow_type": "principal_end",
                 "accrual_start": last.end,

@@ -51,6 +51,9 @@ def generate_schedule(
     stub: StubType = "ShortFront",
     payment_delay_bdays: int = 0,
     payment_calendar: USCalendar | None = None,
+    spot_roll: BusinessDayConvention | None = None,
+    accrual_roll: BusinessDayConvention | None = None,
+    pay_roll: BusinessDayConvention | None = None,
 ) -> list[AccrualPeriod]:
     """Generate accrual periods from `effective_date` to `termination_date`.
 
@@ -66,6 +69,9 @@ def generate_schedule(
         raise ValueError(f"termination_date {termination_date} must be > effective_date {effective_date}")
     step = parse_frequency(frequency)
     pay_cal = payment_calendar or calendar
+    s_roll: BusinessDayConvention = spot_roll or business_day_convention
+    a_roll: BusinessDayConvention = accrual_roll or business_day_convention
+    p_roll: BusinessDayConvention = pay_roll or business_day_convention
 
     unadjusted: list[date] = []
     if stub in ("ShortFront", "LongFront"):
@@ -86,10 +92,18 @@ def generate_schedule(
             unadjusted = unadjusted[:-1]
         unadjusted.append(termination_date)
 
-    rolled = [calendar.roll(d, business_day_convention) for d in unadjusted]
+    # First entry (effective/spot date) rolls under spot_roll; remaining accrual
+    # boundaries roll under accrual_roll.
+    rolled = [calendar.roll(unadjusted[0], s_roll)] + [
+        calendar.roll(d, a_roll) for d in unadjusted[1:]
+    ]
 
     periods: list[AccrualPeriod] = []
     for s, e in zip(rolled[:-1], rolled[1:]):
         pay = pay_cal.add_business_days(e, payment_delay_bdays) if payment_delay_bdays else e
+        # add_business_days returns a BD already; pay_roll is a no-op in that
+        # case but still applies if the resulting date is on the pay-calendar
+        # holiday set (extras may differ from accrual calendar).
+        pay = pay_cal.roll(pay, p_roll)
         periods.append(AccrualPeriod(start=s, end=e, payment_date=pay))
     return periods

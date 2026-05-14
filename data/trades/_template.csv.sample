@@ -20,11 +20,22 @@
 #   payment_calendar          NY_FED
 #   payment_delay_bdays       int, business-day lag between accrual end and cash payment
 #   lockout_bdays             int, business days of frozen fixings at the period end
-#   business_day_convention   ModifiedFollowing (default) | Following | Preceding | ModifiedPreceding | None
+#   business_day_convention   ModifiedFollowing (default) | Following | Preceding | ModifiedPreceding | Nearest | None | NoAdjust
+#                                global fallback for the per-leg rolls below
+#
+#   --- Per-leg roll conventions (optional; blank => fall back to business_day_convention) ---
+#   fixed_spot_roll           rolls the unadjusted effective/start date
+#   fixed_accrual_roll        rolls each unadjusted accrual end on the fixed schedule
+#   fixed_pay_roll            rolls each unadjusted payment date on the fixed leg
+#   floating_accrual_roll     rolls each unadjusted accrual end on the floating schedule
+#   floating_pay_roll         rolls each unadjusted payment date on the floating leg
+#   floating_fixing_roll      rolls the lookback-shifted fixing date; default Preceding
+#   floating_fixing_lag_bdays int business-day lookback for fixings; 0 = rate set in advance
+#
 #   description               free text (optional)
 #
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,floating_daycount,floating_spread,fixed_principal_exchange,floating_principal_exchange,fixing_calendar,payment_calendar,payment_delay_bdays,lockout_bdays,business_day_convention,description
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ACT/360,0,none,none,NY_FED,NY_FED,2,0,ModifiedFollowing,5Y pay-float at 5.41% fixed
-SWAP_TEST_002,250000000,true,0.0380,2026-04-01,2036-04-01,3M,ACT/360,ACT/360,0,end,none,NY_FED,NY_FED,2,0,ModifiedFollowing,10Y pay-fixed with principal back on fixed leg at maturity
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ACT/360,0.0025,both,both,NY_FED,NY_FED,2,2,ModifiedFollowing,2Y with bilateral principal exchange at start+end
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,floating_daycount,floating_spread,fixed_principal_exchange,floating_principal_exchange,fixing_calendar,payment_calendar,payment_delay_bdays,lockout_bdays,business_day_convention,fixed_spot_roll,fixed_accrual_roll,fixed_pay_roll,floating_accrual_roll,floating_pay_roll,floating_fixing_roll,floating_fixing_lag_bdays,description
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ACT/360,0,none,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,5Y pay-float at 5.41% fixed
+SWAP_TEST_002,250000000,true,0.0380,2026-04-01,2036-04-01,3M,ACT/360,ACT/360,0,end,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,10Y pay-fixed with principal back on fixed leg at maturity
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ACT/360,0.0025,both,both,NY_FED,NY_FED,2,2,ModifiedFollowing,Following,ModifiedFollowing,Following,ModifiedFollowing,Following,Preceding,2,2Y with all rolls customised + 2-BD fixing lookback

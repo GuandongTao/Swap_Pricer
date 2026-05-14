@@ -91,6 +91,13 @@ def _parse_row(row: dict) -> TradeDef:
         payment_delay_bdays=get("payment_delay_bdays", 0, int),
         lockout_bdays=get("lockout_bdays", 0, int),
         business_day_convention=get("business_day_convention", "ModifiedFollowing", str),
+        fixed_spot_roll=get("fixed_spot_roll", "", str),
+        fixed_accrual_roll=get("fixed_accrual_roll", "", str),
+        fixed_pay_roll=get("fixed_pay_roll", "", str),
+        floating_accrual_roll=get("floating_accrual_roll", "", str),
+        floating_pay_roll=get("floating_pay_roll", "", str),
+        floating_fixing_roll=get("floating_fixing_roll", "", str),
+        floating_fixing_lag_bdays=get("floating_fixing_lag_bdays", 0, int),
         meta={"description": get("description", "", str)} if get("description") else {},
     )
 

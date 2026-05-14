@@ -32,6 +32,10 @@ from .base import Leg
 
 class OISFloatingLeg(Leg):
     _VALID_PEX = {"none", "start", "end", "both"}
+    _VALID_ROLL = {
+        "None", "NoAdjust", "Following", "ModifiedFollowing",
+        "Preceding", "ModifiedPreceding", "Nearest",
+    }
 
     def __init__(
         self,
@@ -46,6 +50,8 @@ class OISFloatingLeg(Leg):
         payment_calendar: USCalendar | None = None,
         spread: float = 0.0,
         principal_exchange: str = "none",
+        fixing_roll: str = "Preceding",
+        fixing_lag_bdays: int = 0,
     ) -> None:
         self.schedule = list(schedule)
         self.notional = notional
@@ -61,6 +67,12 @@ class OISFloatingLeg(Leg):
         if pex not in self._VALID_PEX:
             raise ValueError(f"principal_exchange must be one of {self._VALID_PEX}; got {principal_exchange!r}")
         self.principal_exchange = pex
+        self.fixing_roll = str(fixing_roll) if fixing_roll else "Preceding"
+        if self.fixing_roll not in self._VALID_ROLL:
+            raise ValueError(
+                f"fixing_roll must be one of {sorted(self._VALID_ROLL)}; got {fixing_roll!r}"
+            )
+        self.fixing_lag_bdays = int(fixing_lag_bdays)
 
     def with_projection_curve(self, new_curve: ZeroCurve) -> "OISFloatingLeg":
         """Return a copy with a different projection curve (for DV01 / sensitivities)."""
@@ -76,6 +88,8 @@ class OISFloatingLeg(Leg):
             payment_calendar=self.payment_calendar,
             spread=self.spread,
             principal_exchange=self.principal_exchange,
+            fixing_roll=self.fixing_roll,
+            fixing_lag_bdays=self.fixing_lag_bdays,
         )
 
     def _principal_rows(self, val_date: date, discount_curve: ZeroCurve) -> tuple[list[dict], list[dict]]:
@@ -89,8 +103,8 @@ class OISFloatingLeg(Leg):
         if self.principal_exchange in ("start", "both"):
             d = self.schedule[0].start
             n = self.notional(d)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = -n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = -n * df if d > val_date else 0.0
             start_rows.append({
                 "flow_type": "principal_start",
                 "period_start": d, "period_end": d, "payment_date": d,
@@ -106,8 +120,8 @@ class OISFloatingLeg(Leg):
             last = self.schedule[-1]
             d = last.payment_date
             n = self.notional(last.start)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = n * df if d > val_date else 0.0
             end_rows.append({
                 "flow_type": "principal_end",
                 "period_start": last.end, "period_end": last.end, "payment_date": d,
@@ -144,15 +158,26 @@ class OISFloatingLeg(Leg):
             return r, "history"
         return self.projection_curve.forward(fixing_date, next_fixing), "curve"
 
+    def _fixing_date_for(self, accrual_day: date) -> date:
+        """Shift accrual_day back by `fixing_lag_bdays` business days, then apply
+        `fixing_roll`. With lag=0 this is just the accrual day (no-op)."""
+        if self.fixing_lag_bdays > 0:
+            d = self.fixing_calendar.add_business_days(accrual_day, -self.fixing_lag_bdays)
+        else:
+            d = accrual_day
+        return self.fixing_calendar.roll(d, self.fixing_roll)
+
     def _period_fixing_rows(
         self, p: AccrualPeriod, val_date: date
     ) -> list[dict]:
-        fixings = self._fixing_dates_for_period(p)
-        if not fixings:
+        accrual_days = self._fixing_dates_for_period(p)
+        if not accrual_days:
             return []
-        # Day-count weights: d_i = days to next fixing (or to period end for the last)
-        nexts = fixings[1:] + [p.end]
-        weights = [(nf - f).days for f, nf in zip(fixings, nexts)]
+        # Day-count weights: d_i = days to next accrual anchor (or to period end)
+        nexts = accrual_days[1:] + [p.end]
+        weights = [(nf - f).days for f, nf in zip(accrual_days, nexts)]
+        # Fixing observation dates (lookback-shifted, then rolled)
+        fixings = [self._fixing_date_for(a) for a in accrual_days]
 
         # Apply lockout: last `L` rates frozen at the (L+1)-th-to-last fixing's rate
         L = self.lockout_bdays
@@ -163,7 +188,8 @@ class OISFloatingLeg(Leg):
             raise ValueError(f"Lockout ({L}) exceeds period fixings ({len(fixings)})")
 
         for i in range(normal_count):
-            r, src = self._resolved_rate(fixings[i], nexts[i], val_date)
+            # Forward window for a curve projection is [fixing_date, fixing_date + day_count]
+            r, src = self._resolved_rate(fixings[i], fixings[i] + timedelta(days=weights[i]), val_date)
             applied_rates[i] = r
             sources[i] = src
         # Lockout copies the last "normal" rate forward
@@ -173,7 +199,7 @@ class OISFloatingLeg(Leg):
                 sources[i] = "lockout"
 
         rows = []
-        for f, nf, d, r, src in zip(fixings, nexts, weights, applied_rates, sources):
+        for a, f, nf, d, r, src in zip(accrual_days, fixings, nexts, weights, applied_rates, sources):
             rows.append(
                 {
                     # Outer payment-period context (constant within a period)
@@ -182,7 +208,7 @@ class OISFloatingLeg(Leg):
                     "payment_date": p.payment_date,
                     # Per-fixing sub-accrual (one row per business day)
                     "fixing_date": f,
-                    "accrual_start": f,
+                    "accrual_start": a,
                     "accrual_end": nf,
                     "day_count": d,
                     "reset_rate": r,
@@ -207,8 +233,8 @@ class OISFloatingLeg(Leg):
             effective_rate = comp_coupon_rate + self.spread
             notional = self.notional(p.start)
             period_cf = notional * ((growth - 1.0) + self.spread * D / 360.0)
-            df_pay = discount_curve.df(p.payment_date) if p.payment_date >= val_date else float("nan")
-            disc_cf = period_cf * df_pay if p.payment_date >= val_date else 0.0
+            df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
+            disc_cf = period_cf * df_pay if p.payment_date > val_date else 0.0
 
             # Compute per-row display columns
             for i, row in enumerate(rows):
@@ -283,8 +309,8 @@ class OISFloatingLeg(Leg):
             comp_rate = (growth - 1.0) * 360.0 / D
             notional = self.notional(p.start)
             period_cf = notional * ((growth - 1.0) + self.spread * D / 360.0)
-            df_pay = discount_curve.df(p.payment_date) if p.payment_date >= val_date else float("nan")
-            disc_cf = period_cf * df_pay if p.payment_date >= val_date else 0.0
+            df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
+            disc_cf = period_cf * df_pay if p.payment_date > val_date else 0.0
             rows.append(
                 {
                     "flow_type": "coupon",
@@ -313,8 +339,8 @@ class OISFloatingLeg(Leg):
         if self.principal_exchange in ("start", "both"):
             d = self.schedule[0].start
             n = self.notional(d)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = -n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = -n * df if d > val_date else 0.0
             start_extra.append({
                 "flow_type": "principal_start",
                 "accrual_start": d, "accrual_end": d, "payment_date": d,
@@ -330,8 +356,8 @@ class OISFloatingLeg(Leg):
             last = self.schedule[-1]
             d = last.payment_date
             n = self.notional(last.start)
-            df = discount_curve.df(d) if d >= val_date else float("nan")
-            disc = n * df if d >= val_date else 0.0
+            df = discount_curve.df(d) if d > val_date else float("nan")
+            disc = n * df if d > val_date else 0.0
             end_extra.append({
                 "flow_type": "principal_end",
                 "accrual_start": last.end, "accrual_end": last.end, "payment_date": d,

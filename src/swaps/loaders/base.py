@@ -46,6 +46,19 @@ class TradeDef:
     payment_delay_bdays: int = 0
     lockout_bdays: int = 0
     business_day_convention: str = "ModifiedFollowing"
+    # Per-leg roll conventions. Each falls back to `business_day_convention` when
+    # left blank (empty string or None). Accepted values: None, NoAdjust, Following,
+    # ModifiedFollowing, Preceding, ModifiedPreceding, Nearest.
+    fixed_spot_roll: str = ""
+    fixed_accrual_roll: str = ""
+    fixed_pay_roll: str = ""
+    floating_accrual_roll: str = ""
+    floating_pay_roll: str = ""
+    # Fixing/lookback roll convention defaults to Preceding (standard for OIS
+    # observation when the natural observation date is non-BD). Lookback lag in
+    # business days; 0 = rate-set-in-advance / no lag.
+    floating_fixing_roll: str = ""
+    floating_fixing_lag_bdays: int = 0
     meta: dict = field(default_factory=dict)
 
 

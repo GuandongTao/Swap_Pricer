@@ -41,6 +41,13 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
     fix_cal = _build_calendar(td.fixing_calendar, td.fixing_calendar_extras, td.fixing_calendar_extras_file)
     pay_cal = _build_calendar(td.payment_calendar, td.payment_calendar_extras, td.payment_calendar_extras_file)
 
+    # Per-leg roll overrides; empty string -> fall back to td.business_day_convention.
+    # The schedule (shared start/end dates) uses the FIXED leg's rolls, since accrual
+    # start/end live in both legs; floating's own pay_roll is honored at the pay-date
+    # rebuild below if it diverges from fixed.
+    def _r(v: str) -> str:
+        return v if v else td.business_day_convention
+
     schedule = generate_schedule(
         effective_date=td.start_date,
         termination_date=td.maturity_date,
@@ -49,14 +56,35 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         business_day_convention=td.business_day_convention,
         payment_delay_bdays=td.payment_delay_bdays,
         payment_calendar=pay_cal,
+        spot_roll=_r(td.fixed_spot_roll),
+        accrual_roll=_r(td.fixed_accrual_roll),
+        pay_roll=_r(td.fixed_pay_roll),
     )
+    # If floating accrual/pay rolls differ from fixed, rebuild a floating schedule.
+    fl_acc = _r(td.floating_accrual_roll)
+    fl_pay = _r(td.floating_pay_roll)
+    if (fl_acc, fl_pay) != (_r(td.fixed_accrual_roll), _r(td.fixed_pay_roll)):
+        float_schedule = generate_schedule(
+            effective_date=td.start_date,
+            termination_date=td.maturity_date,
+            frequency=td.fixed_frequency,
+            calendar=fix_cal,
+            business_day_convention=td.business_day_convention,
+            payment_delay_bdays=td.payment_delay_bdays,
+            payment_calendar=pay_cal,
+            spot_roll=_r(td.fixed_spot_roll),
+            accrual_roll=fl_acc,
+            pay_roll=fl_pay,
+        )
+    else:
+        float_schedule = schedule
     notional = ConstantNotional(td.notional)
     fixed = FixedLeg(
         schedule, notional, td.fixed_rate, get_daycount(td.fixed_daycount),
         principal_exchange=td.fixed_principal_exchange,
     )
     floating = OISFloatingLeg(
-        schedule=schedule,
+        schedule=float_schedule,
         notional=notional,
         projection_curve=ff_curve,
         fixings=fixings,
@@ -67,6 +95,8 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         payment_calendar=pay_cal,
         spread=td.floating_spread,
         principal_exchange=td.floating_principal_exchange,
+        fixing_roll=_r(td.floating_fixing_roll),
+        fixing_lag_bdays=td.floating_fixing_lag_bdays,
     )
     return Swap(
         trade_id=td.trade_id,

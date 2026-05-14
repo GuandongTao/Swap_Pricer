@@ -42,6 +42,9 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         "fixing_calendar_extras", "payment_calendar_extras",
         "fixing_calendar_extras_file", "payment_calendar_extras_file",
         "payment_delay_bdays", "lockout_bdays", "business_day_convention",
+        "fixed_spot_roll", "fixed_accrual_roll", "fixed_pay_roll",
+        "floating_accrual_roll", "floating_pay_roll",
+        "floating_fixing_roll", "floating_fixing_lag_bdays",
     }
     return TradeDef(
         trade_id=str(raw["trade_id"]),
@@ -65,6 +68,13 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         payment_delay_bdays=int(raw.get("payment_delay_bdays", 0)),
         lockout_bdays=int(raw.get("lockout_bdays", 0)),
         business_day_convention=str(raw.get("business_day_convention", "ModifiedFollowing")),
+        fixed_spot_roll=str(raw.get("fixed_spot_roll", "")),
+        fixed_accrual_roll=str(raw.get("fixed_accrual_roll", "")),
+        fixed_pay_roll=str(raw.get("fixed_pay_roll", "")),
+        floating_accrual_roll=str(raw.get("floating_accrual_roll", "")),
+        floating_pay_roll=str(raw.get("floating_pay_roll", "")),
+        floating_fixing_roll=str(raw.get("floating_fixing_roll", "")),
+        floating_fixing_lag_bdays=int(raw.get("floating_fixing_lag_bdays", 0)),
         meta={k: v for k, v in raw.items() if k not in known},
     )
 
