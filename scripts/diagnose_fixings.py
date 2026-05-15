@@ -12,6 +12,10 @@ Usage (from repo root):
     python scripts/diagnose_fixings.py
     python scripts/diagnose_fixings.py --date 2026-02-10
     python scripts/diagnose_fixings.py --path data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv --index FEDFUNDS
+
+Add --redact to mask every rate value (<rate>) so the whole output is safe
+to paste outside a restricted environment:
+    python scripts/diagnose_fixings.py --redact --date 2026-02-10
 """
 
 from __future__ import annotations
@@ -32,7 +36,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--path", default=str(ROOT / "data" / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv"))
     p.add_argument("--date", default="2026-02-10", help="Probe date (ISO) expected in the file.")
     p.add_argument("--index", default="FEDFUNDS", help="Index name passed to the loader.")
+    p.add_argument("--redact", action="store_true",
+                   help="Mask all rate values (<rate>) so the output is safe to share.")
     a = p.parse_args(argv)
+
+    import re as _re
+
+    def _red(x):
+        """Mask decimal rate values when --redact is set."""
+        if not a.redact:
+            return x
+        if isinstance(x, (list, tuple)):
+            return [("<rate>" if _re.fullmatch(r"-?\d*\.\d+", str(c).strip()) else c)
+                    for c in x]
+        return _re.sub(r"-?\d*\.\d+", "<rate>", str(x))
 
     P = Path(a.path)
     probe = datetime.strptime(a.date, "%Y-%m-%d").date()
@@ -60,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         has_header = False
     except (ValueError, TypeError):
         has_header = True
-    print(f"row0: {list(raw.iloc[0])}")
+    print(f"row0: {_red(list(raw.iloc[0]))}")
     print(f"header detected & dropped?: {has_header}"
           + ("  <-- if row0 is real data, the loader is dropping it" if has_header else ""))
     if has_header:
@@ -116,11 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     if mp:
         print(f"date range: {min(mp)} -> {max(mp)}")
     print(f"\n>>> PROBE {probe} in loaded map? : {probe in mp}"
-          + (f"  value={mp[probe]}" if probe in mp else "  <-- MISSING"))
+          + (f"  value={_red(mp[probe])}" if probe in mp else "  <-- MISSING"))
     if bad_date[:3]:
-        print("first bad-DATE rows:", bad_date[:3])
+        print("first bad-DATE rows:", [_red(r) for r in bad_date[:3]])
     if bad_rate[:3]:
-        print("first bad-RATE rows:", bad_rate[:3])
+        print("first bad-RATE rows:", [_red(r) for r in bad_rate[:3]])
 
     # --- raw bytes of any line mentioning the probe date ---------------------
     txt = P.read_text(errors="replace").splitlines()
@@ -131,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
             if iso in ln or us in ln or mon in ln.lower()]
     print(f"\nraw lines mentioning the probe date ({len(hits)} found):")
     for i, ln in hits[:5]:
-        print(f"  line {i}: {ln!r}")   # repr() exposes BOM, quotes, leading ', \t
+        print(f"  line {i}: {_red(ln)!r}")   # repr() exposes BOM, quotes, leading ', \t
     if not hits:
         print("  (none -> the date is not literally in the file, or in a format"
               " none of the probes recognised; check the raw rows around it)")
@@ -141,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         from swaps.loaders.excel import ExcelFixingLoader
         fh = ExcelFixingLoader(P).load(a.index)
         print(f"\nvia real ExcelFixingLoader: {len(fh)} fixings | "
-              f"get({probe})={fh.get(probe)}")
+              f"get({probe})={_red(fh.get(probe))}")
     except Exception as e:  # noqa: BLE001
         print(f"\n(could not import/run ExcelFixingLoader: {type(e).__name__}: {e})")
 
