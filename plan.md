@@ -142,7 +142,7 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 **Input formats (production, only formats supported — legacy synthetic formats retired 2026-05-15):**
 
 - **Curve** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
-- **Fixings** — `data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv`; `ticker,date,rate` content identical to the old `fedfunds.csv` (no special handling). `ExcelFixingLoader` already auto-detects this layout.
+- **Fixings** — `data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv`; `ticker,date,rate` content identical to the old `fedfunds.csv` (no special handling). `ExcelFixingLoader` already auto-detects this layout.
 
 Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic_fixings.py`) now emit these production formats directly. Curve/fixing files normalize to the same in-memory `ZeroCurve` / `FixingHistory`, so nothing downstream of the loaders changed.
 
@@ -279,7 +279,7 @@ F:\Projects - Github\Swaps\
 │   └── batch.py              # parallel multi-date runner
 ├── data/
 │   ├── curves/market_environment_<YYYY-MM-DD>.csv
-│   ├── fixings/fixing_cali_USD-FEDFUNDS-ON.csv
+│   ├── fixings/fixing_cail_USD-FEDFUNDS-ON.csv
 │   └── trades/*.yaml
 ├── output/
 │   ├── run_<val_date>/

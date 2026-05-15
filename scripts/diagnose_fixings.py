@@ -11,7 +11,7 @@ where a given date is lost. It writes nothing and never moves the file.
 Usage (from repo root):
     python scripts/diagnose_fixings.py
     python scripts/diagnose_fixings.py --date 2026-02-10
-    python scripts/diagnose_fixings.py --path data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv --index FEDFUNDS
+    python scripts/diagnose_fixings.py --path data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv --index FEDFUNDS
 
 Add --redact to mask every rate value (<rate>) so the whole output is safe
 to paste outside a restricted environment:
@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--path", default=str(ROOT / "data" / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv"))
+    p.add_argument("--path", default=str(ROOT / "data" / "fixings" / "fixing_cail_USD-FEDFUNDS-ON.csv"))
     p.add_argument("--date", default="2026-02-10", help="Probe date (ISO) expected in the file.")
     p.add_argument("--index", default="FEDFUNDS", help="Index name passed to the loader.")
     p.add_argument("--redact", action="store_true",

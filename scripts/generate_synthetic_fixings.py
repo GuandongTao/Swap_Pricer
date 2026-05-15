@@ -40,7 +40,7 @@ def write_fixings(out_path: Path, start: date, end: date, rate: float, ticker: s
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--out", default=str(ROOT / "data" / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv"))
+    p.add_argument("--out", default=str(ROOT / "data" / "fixings" / "fixing_cail_USD-FEDFUNDS-ON.csv"))
     p.add_argument("--start", default="2026-01-02", help="First fixing date (inclusive, ISO).")
     p.add_argument("--end", default="2026-03-31", help="Last fixing date (inclusive, ISO).")
     p.add_argument("--rate", type=float, default=0.0364, help="Flat fixing rate (decimal).")

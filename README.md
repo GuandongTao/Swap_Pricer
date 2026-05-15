@@ -53,7 +53,7 @@ Exit code is non-zero if any date errors or prices only partially.
 `data/curves/` and `data/fixings/` are the **single sources of truth** for market data, used by both the CLI and the test suite. Production input formats (the only formats supported):
 
 - Curves: `data/curves/market_environment_YYYY-MM-DD.csv` — raw vendor export with header rows and many interleaved non-USD/IR pillars; the loader filters column A down to `IR.USD-{SOFR|FEDFUNDS}-ON.ZERORATE-{TENOR}.MID`.
-- Fixings: `data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv` — `ticker,date,rate` rows.
+- Fixings: `data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv` — `ticker,date,rate` rows.
 
 On a fresh clone, supply real files, or bootstrap synthetic placeholders:
 

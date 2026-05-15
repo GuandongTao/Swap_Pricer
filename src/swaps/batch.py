@@ -94,7 +94,7 @@ def run_batch(
     *,
     data_dir: str | Path,
     out_dir: str | Path = "output",
-    fixing_file: str = "fixing_cali_USD-FEDFUNDS-ON.csv",
+    fixing_file: str = "fixing_cail_USD-FEDFUNDS-ON.csv",
     max_workers: int | None = None,
     write_detail: bool = True,
     write_parquet: bool = True,

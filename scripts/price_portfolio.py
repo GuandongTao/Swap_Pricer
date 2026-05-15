@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir)
 
     curve_loader = ExcelCurveLoader(data_dir / "curves")
-    fixing_loader = ExcelFixingLoader(data_dir / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv")
+    fixing_loader = ExcelFixingLoader(data_dir / "fixings" / "fixing_cail_USD-FEDFUNDS-ON.csv")
     trade_loader = CombinedTradeLoader(
         YamlTradeLoader(data_dir / "trades"),
         CsvTradeLoader(data_dir / "trades"),

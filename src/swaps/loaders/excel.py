@@ -16,7 +16,7 @@ Curve file layout (one file per valuation date), normalized to an in-memory
 Fixings file layout:
   - Excel or CSV with columns ``date`` and ``rate`` (optionally a leading
     ``ticker`` column). Production filename is
-    ``fixing_cali_USD-FEDFUNDS-ON.csv``; content is identical to the legacy
+    ``fixing_cail_USD-FEDFUNDS-ON.csv``; content is identical to the legacy
     ``fedfunds.csv`` so no special handling is required.
 """
 

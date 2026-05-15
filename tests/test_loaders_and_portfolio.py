@@ -19,7 +19,7 @@ DATA = ROOT / "data"
 def loaders():
     return (
         ExcelCurveLoader(DATA / "curves"),
-        ExcelFixingLoader(DATA / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv"),
+        ExcelFixingLoader(DATA / "fixings" / "fixing_cail_USD-FEDFUNDS-ON.csv"),
         YamlTradeLoader(DATA / "trades"),
     )
 

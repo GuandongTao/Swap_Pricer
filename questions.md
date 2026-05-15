@@ -59,7 +59,7 @@ formats have been retired:
   data; many irrelevant pillars (other currencies, EQ/FX/VOL tickers) are
   interleaved and filtered out by col-A `TICKER_RE` to keep only
   `IR.USD-{SOFR|FEDFUNDS}-ON.ZERORATE-{TENOR}.MID`.
-- Fixings: `data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv`, `ticker,date,rate`
+- Fixings: `data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv`, `ticker,date,rate`
   content identical to the old `fedfunds.csv` (no special handling).
 `ExcelCurveLoader` resolves the curve file by ISO `val_date` in the name; the
 old `CurvesYYYYMMDD.xlsx` path is no longer supported.
