@@ -26,14 +26,16 @@ data/fixings/*.csv
 data/fixings/*.xlsx
 data/fixings/*.xls
 
-# Legacy real-data drop location at repo root
-/Curves*.xlsx
-
 # Golden-master snapshots are derived from market data and regenerated locally.
 tests/golden/*.json
 
-# Decisions (2026-05-13 PM):
-#   data/curves/Curves*.xlsx  -- NOW TRACKED (user request: include real curves in pushes)
-#   /output/                  -- NOW TRACKED (user request: include outputs in pushes)
-#   data/trades/              -- already tracked
-# Fixings remain ignored unless explicitly toggled later.
+# Output: keep the folder in the repo, ignore all generated run artifacts
+# (per-run run_<date>/ folders, batch_*.{log,json}, stale flat-layout files).
+/output/*
+!/output/.gitkeep
+
+# Decisions:
+#   data/curves/market_environment_*.csv  -- TRACKED (raw production curve export)
+#   /output/                              -- folder kept, artifacts ignored (regenerated each run)
+#   data/trades/                          -- already tracked
+# Fixings (data/fixings/*) remain ignored unless explicitly toggled later.

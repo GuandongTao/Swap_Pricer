@@ -1,19 +1,30 @@
 """Excel-based loaders.
 
-Curve file layout (one file per valuation date):
-  - Filename: ``CurvesYYYYMMDD.xlsx``
-  - One sheet (default name ``Sheet1``), no header.
-  - Column A: ticker of the form ``IR.USD-{INDEX}-ON.ZERORATE-{TENOR}.MID``
-  - Column B: zero rate (decimal, e.g. 0.0364)
-  - One file holds **both** SOFR and FEDFUNDS curves (interleaved).
+Curve file layout (one file per valuation date), normalized to an in-memory
+``ZeroCurve`` so nothing downstream changes:
+
+  Raw production format:
+    - Filename: ``market_environment_YYYY-MM-DD.csv`` (ISO date, dashes)
+    - A few non-data header rows on top (``Name``/``Date``/``Property`` in col A).
+    - Many irrelevant curve pillars (other currencies, EQ/FX/VOL tickers) are
+      interleaved with the ones we need. They are filtered out automatically by
+      ``TICKER_RE`` (col-A content filter) -- only
+      ``IR.USD-{SOFR|FEDFUNDS}-ON.ZERORATE-{TENOR}.MID`` rows are kept.
+    - Col A: ticker, Col B: zero rate (decimal, e.g. 0.0364).
+    - One file holds **both** SOFR and FEDFUNDS curves (interleaved).
 
 Fixings file layout:
-  - Excel or CSV with columns ``date`` and ``rate``.
+  - Excel or CSV with columns ``date`` and ``rate`` (optionally a leading
+    ``ticker`` column). Production filename is
+    ``fixing_cali_USD-FEDFUNDS-ON.csv``; content is identical to the legacy
+    ``fedfunds.csv`` so no special handling is required.
 """
 
 from __future__ import annotations
 
+import csv
 import re
+from collections.abc import Iterator
 from datetime import date, datetime
 from pathlib import Path
 
@@ -25,7 +36,9 @@ from ..fixings import FixingHistory
 from ..rate_quoting import DEFAULT, RateQuoting
 from .base import CurveLoader, FixingLoader
 
-CURVE_FILENAME_RE = re.compile(r"^Curves(\d{8})\.xlsx$", re.IGNORECASE)
+CURVE_RAW_RE = re.compile(
+    r"^market_environment[_-](\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE
+)
 TICKER_RE = re.compile(r"^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$")
 
 CANONICAL_NAME = {
@@ -49,31 +62,62 @@ class ExcelCurveLoader(CurveLoader):
         self._cache: dict[tuple[date, str], dict[str, float]] = {}
 
     def _file_path(self, val_date: date) -> Path:
-        name = f"Curves{val_date.strftime('%Y%m%d')}.xlsx"
-        p = self.base_dir / name
-        if not p.exists():
-            # Loose match in case casing differs
-            matches = [f for f in self.base_dir.glob("Curves*.xlsx")
-                       if f.name.lower() == name.lower()]
-            if not matches:
-                raise FileNotFoundError(f"Curve file not found for {val_date}: {p}")
-            p = matches[0]
-        return p
+        raw_name = f"market_environment_{val_date.strftime('%Y-%m-%d')}.csv"
+        p = self.base_dir / raw_name
+        if p.exists():
+            return p
+        # Loose, case-insensitive match (handles market_environment-<date>.csv too).
+        for f in self.base_dir.iterdir():
+            if not f.is_file():
+                continue
+            m = CURVE_RAW_RE.match(f.name)
+            if m and m.group(1) == val_date.strftime("%Y-%m-%d"):
+                return f
+        raise FileNotFoundError(
+            f"Curve file not found for {val_date} in {self.base_dir} "
+            f"(expected {raw_name})"
+        )
+
+    def _iter_ticker_rows(self, path: Path) -> Iterator[tuple[str, object]]:
+        """Yield ``(col_a, col_b)`` for every data row, regardless of file type.
+
+        Non-data header rows and irrelevant pillars are not filtered here --
+        callers apply ``TICKER_RE`` so the same content filter is shared by the
+        legacy xlsx and raw csv paths.
+        """
+        if path.suffix.lower() == ".csv":
+            with path.open("r", newline="", encoding="utf-8-sig") as fh:
+                for row in csv.reader(fh):
+                    if not row or not row[0].strip() or len(row) < 2:
+                        continue
+                    yield row[0], row[1]
+        else:
+            wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+            try:
+                ws = self._select_ws(wb)
+                for row in ws.iter_rows(values_only=True):
+                    if not row or row[0] is None or len(row) < 2:
+                        continue
+                    yield row[0], row[1]
+            finally:
+                wb.close()
+
+    def _select_ws(self, wb: "openpyxl.workbook.workbook.Workbook"):
+        if self.sheet_name in wb.sheetnames:
+            return wb[self.sheet_name]
+        if "in" in wb.sheetnames:  # raw export sheet name
+            return wb["in"]
+        return wb[wb.sheetnames[0]]
 
     def _parse_all_pillars(self, val_date: date) -> dict[str, dict[str, float]]:
         path = self._file_path(val_date)
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-        ws = wb[self.sheet_name]
         pillars: dict[str, dict[str, float]] = {"SOFR": {}, "FEDFUNDS": {}}
-        for row in ws.iter_rows(values_only=True):
-            if not row or row[0] is None:
-                continue
-            m = TICKER_RE.match(str(row[0]).strip())
+        for col_a, col_b in self._iter_ticker_rows(path):
+            m = TICKER_RE.match(str(col_a).strip())
             if not m:
                 continue
             index, tenor = m.group(1), m.group(2)
-            pillars[index][tenor] = float(row[1])
-        wb.close()
+            pillars[index][tenor] = float(str(col_b).strip())
         if not pillars["SOFR"] or not pillars["FEDFUNDS"]:
             raise ValueError(f"Curve file {path} missing SOFR or FEDFUNDS pillars")
         return pillars
@@ -99,19 +143,14 @@ class ExcelCurveLoader(CurveLoader):
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Curve file not found: {path}")
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-        ws = wb[self.sheet_name]
         pillars: dict[str, float] = {}
-        for row in ws.iter_rows(values_only=True):
-            if not row or row[0] is None:
-                continue
-            m = TICKER_RE.match(str(row[0]).strip())
+        for col_a, col_b in self._iter_ticker_rows(path):
+            m = TICKER_RE.match(str(col_a).strip())
             if not m:
                 continue
             index, tenor = m.group(1), m.group(2)
             if index == key:
-                pillars[tenor] = float(row[1])
-        wb.close()
+                pillars[tenor] = float(str(col_b).strip())
         if not pillars:
             raise ValueError(f"No {key} pillars found in {path}")
         return ZeroCurve(val_date, pillars, self.rate_quoting, name=key)

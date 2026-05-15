@@ -33,7 +33,7 @@ FIELDS = ("clean", "dirty", "accrued", "dv01", "pv_fixed", "pv_floating")
 def _run_portfolio(tmp_path: Path) -> dict[str, dict[str, float]]:
     pf = Portfolio(
         ExcelCurveLoader(DATA / "curves"),
-        ExcelFixingLoader(DATA / "fixings" / "fedfunds.csv"),
+        ExcelFixingLoader(DATA / "fixings" / "fixing_cali_USD-FEDFUNDS-ON.csv"),
         YamlTradeLoader(DATA / "trades"),
     )
     valuations, _ = pf.run(

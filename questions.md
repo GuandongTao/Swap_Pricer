@@ -51,9 +51,18 @@ Both treated like any other zero pillar.
 **Currently assumed:** each `Swap` has a `pay_fixed: bool` field; PV reported from that party's perspective.
 **Status:** awaiting trade definitions to confirm both directions occur in the portfolio.
 
-### Q8. Curve file naming convention — will it always be `CurvesYYYYMMDD.xlsx`?
-**Currently assumed:** yes. The loader parses `val_date` from this filename pattern.
-**Status:** to be confirmed; the user said the file layout will remain the same.
+### Q8. Curve / fixing file naming convention (resolved 2026-05-15)
+**Resolved:** production inputs are the raw vendor formats and the legacy synthetic
+formats have been retired:
+- Curve: `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date). One conceptual
+  sheet (`in`). A few header rows (`Name`/`Date`/`Property` in col A) precede the
+  data; many irrelevant pillars (other currencies, EQ/FX/VOL tickers) are
+  interleaved and filtered out by col-A `TICKER_RE` to keep only
+  `IR.USD-{SOFR|FEDFUNDS}-ON.ZERORATE-{TENOR}.MID`.
+- Fixings: `data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv`, `ticker,date,rate`
+  content identical to the old `fedfunds.csv` (no special handling).
+`ExcelCurveLoader` resolves the curve file by ISO `val_date` in the name; the
+old `CurvesYYYYMMDD.xlsx` path is no longer supported.
 
 ### Q9. Historical FF fixings — source format and location
 **Currently assumed:** a CSV or Excel under `data/fixings/` with columns `date, rate`.

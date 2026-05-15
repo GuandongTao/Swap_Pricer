@@ -73,8 +73,17 @@ def _parse_row(row: dict) -> TradeDef:
             return default
         return parser(v) if parser else v
 
+    raw_id = str(row["trade_id"]).strip()
+    # CSV trades follow the AMEX daily IRS naming scheme: the `trade_id` column
+    # carries ONLY the trailing unique id number. Portfolio.run reconstructs the
+    # full `AMEX_DAILY_IRS_<val_date>_<id>` once the valuation date is known.
+    meta: dict = {"id": raw_id, "_id_scheme": "amex_daily_irs"}
+    desc = get("description", "", str)
+    if desc:
+        meta["description"] = desc
+
     return TradeDef(
-        trade_id=str(row["trade_id"]).strip(),
+        trade_id=raw_id,
         notional=float(row["notional"]),
         pay_fixed=_to_bool(row["pay_fixed"]),
         fixed_rate=float(row["fixed_rate"]),
@@ -98,7 +107,7 @@ def _parse_row(row: dict) -> TradeDef:
         floating_pay_roll=get("floating_pay_roll", "", str),
         floating_fixing_roll=get("floating_fixing_roll", "", str),
         floating_fixing_lag_bdays=get("floating_fixing_lag_bdays", 0, int),
-        meta={"description": get("description", "", str)} if get("description") else {},
+        meta=meta,
     )
 
 

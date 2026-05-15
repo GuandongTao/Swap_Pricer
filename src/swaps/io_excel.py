@@ -18,6 +18,7 @@ def _summary_row(v: SwapValuation, run_id: str, run_date, git_sha: str) -> dict:
         "run_date": run_date,
         "git_sha": git_sha,
         "trade_id": v.trade_id,
+        "id": m.get("id"),
         "notional": m.get("notional"),
         "fixed_rate": m.get("fixed_rate"),
         "start_date": m.get("start_date"),
@@ -137,7 +138,8 @@ def write_trade_detail_workbook(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fl = v.floating_cf.copy()
     fx = v.fixed_cf.copy()
-    for df in (fl, fx):
+    fl_by_period = v.floating_cf_by_period.copy()
+    for df in (fl, fx, fl_by_period):
         if not df.empty:
             df.insert(0, "git_sha", git_sha)
             df.insert(0, "run_date", run_date)
@@ -147,3 +149,6 @@ def write_trade_detail_workbook(
     with pd.ExcelWriter(out_path, engine="openpyxl") as w:
         fl.to_excel(w, sheet_name="Floating", index=False)
         fx.to_excel(w, sheet_name="Fixed", index=False)
+        # Same monthly-compounded view as the debug workbook's
+        # "FloatingCF_byPeriod" tab — available without enabling --debug.
+        fl_by_period.to_excel(w, sheet_name="FloatingByPeriod", index=False)

@@ -32,6 +32,10 @@ class SwapValuation:
     fixed_cf: pd.DataFrame
     floating_cf: pd.DataFrame
     meta: dict = field(default_factory=dict)
+    # Monthly-compounded per-period floating view (mirrors the fixed-leg
+    # cashflow granularity). Always computed so the detail workbook can emit it
+    # without enabling --debug. Empty for matured trades.
+    floating_cf_by_period: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 class SwapPricer:
@@ -59,6 +63,7 @@ class SwapPricer:
         dv01 = self._dv01(swap, md)
         fixed_cf = swap.fixed.cashflows(md.val_date, md.discount_curve)
         floating_cf = swap.floating.cashflows(md.val_date, md.discount_curve)
+        floating_cf_by_period = swap.floating.period_cashflows(md.val_date, md.discount_curve)
         return SwapValuation(
             trade_id=swap.trade_id,
             val_date=md.val_date,
@@ -71,6 +76,7 @@ class SwapPricer:
             fixed_cf=fixed_cf,
             floating_cf=floating_cf,
             meta=dict(swap.meta),
+            floating_cf_by_period=floating_cf_by_period,
         )
 
     def _dv01(self, swap: Swap, md: MarketData) -> float:

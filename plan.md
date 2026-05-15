@@ -61,6 +61,36 @@ Standard ISDA OIS day-count weights `d_i` apply (Fri fixing typically carries `d
 
 ---
 
+## DV01 Methodology (reference)
+
+DV01 is the position's **loss for a +1bp parallel shift of the rate environment**, computed by full revaluation (bump-and-reprice), not by an analytic/closed-form sensitivity.
+
+**Bump definition.** A single `+1bp` (`BUMP = 1e-4`) parallel shift is applied to **both** curves simultaneously:
+- the **SOFR discount curve** (`md.discount_curve.bumped(+1bp)`), and
+- the **FF projection curve** (`md.projection_curve.bumped(+1bp)`).
+
+This is a *parallel* bump — every pillar moves by the same +1bp, not a key-rate / per-tenor bucket. It is a *dual-curve* bump — discounting and forward projection move together, so the reported number is the total rate sensitivity, not an isolated discount-curve or forward-curve sensitivity. (Per-curve and key-rate decompositions are a future extension, not v1.)
+
+**Computation.**
+```
+DV01 = PV_base − PV_bumped
+```
+where `PV` is the signed dirty PV under the trade's sign convention:
+- `pay_fixed=True`  → PV = PV(float) − PV(fixed)
+- `pay_fixed=False` → PV = PV(fixed) − PV(float)
+
+The bumped PV is obtained by rebuilding the swap with its floating leg repointed at the bumped projection curve (`floating.with_projection_curve(bumped_proj)`) and repricing against a `MarketData` carrying both bumped curves (same `val_date`, same `fixings`).
+
+**Sign convention.** A **positive DV01 means the position loses value when rates rise** (`PV_base − PV_bumped > 0`). It is reported as the loss under the up-bump, consistent with the `pay_fixed` sign convention above.
+
+**Properties / caveats.**
+- One-sided (forward-difference) bump, not a central difference; bias is `O(bump)` and negligible at 1bp for linear OIS swaps.
+- Fixings are held fixed across the bump — only projected (future) rates and discount factors move; historical compounded amounts are unchanged.
+- Matured trades carry `dv01 = 0` (set explicitly by the portfolio runner; they are never repriced).
+- Bump size is configurable via `SwapPricer(bump_size=...)`; default `1e-4`.
+
+---
+
 ## Object Design
 
 ### Conventions & quoting
@@ -99,7 +129,7 @@ Standard ISDA OIS day-count weights `d_i` apply (Fri fixing typically carries `d
 
 - **`Swap`** — `fixed`, `floating`, `pay_fixed: bool`, `trade_id`, trade-level metadata.
 - **`MarketData`** — `val_date, discount_curve, projection_curve, fixings`.
-- **`SwapPricer`** — `price(swap, market_data) → SwapValuation`. Also `dv01(swap, market_data)` via parallel +1bp SOFR bump.
+- **`SwapPricer`** — `price(swap, market_data) → SwapValuation`. Also `dv01(swap, market_data)` via a parallel +1bp bump of **both** the SOFR discount and FF projection curves, reported as the loss `PV_base − PV_bumped` (see *DV01 Methodology* above).
 - **`SwapValuation`** *(dataclass)* — `clean, dirty, accrued, dv01, fixed_cf: DataFrame, floating_cf: DataFrame` + identifying columns (see DB-readiness).
 
 ### Loaders (input abstraction)
@@ -109,13 +139,19 @@ Standard ISDA OIS day-count weights `d_i` apply (Fri fixing typically carries `d
 - **`FixingLoader`** *(ABC)* — `ExcelFixingLoader`, `DataFrameFixingLoader`.
 - **`TradeLoader`** *(ABC)* — `YamlTradeLoader`, `DataFrameTradeLoader`.
 
-The Excel loader is tolerant: configurable sheet name and column names (`Tenor`, `Rate`).
+**Input formats (production, only formats supported — legacy synthetic formats retired 2026-05-15):**
+
+- **Curve** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
+- **Fixings** — `data/fixings/fixing_cali_USD-FEDFUNDS-ON.csv`; `ticker,date,rate` content identical to the old `fedfunds.csv` (no special handling). `ExcelFixingLoader` already auto-detects this layout.
+
+Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic_fixings.py`) now emit these production formats directly. Curve/fixing files normalize to the same in-memory `ZeroCurve` / `FixingHistory`, so nothing downstream of the loaders changed.
 
 ### Portfolio & output
 
-- **`Portfolio`** — takes loaders + a list of trade ids; iterates, prices each, writes outputs.
+- **`Portfolio`** — takes loaders + a list of trade ids; iterates, prices each, writes outputs. One run is self-contained in its own per-valuation-date folder `<out_dir>/run_<val_date>/` so single-date and batch runs share an identical layout.
 - **`io_excel`** — writes portfolio workbook + per-trade detail workbooks (see Output section).
 - **`io_parquet`** — same frames also dumped to Parquet for downstream automation / DB load.
+- **`batch.run_batch(val_dates, …)`** — fans several valuation dates across a `ProcessPoolExecutor` (pricing is CPU-bound). Each date is an independent `Portfolio.run` writing its own `run_<val_date>/` folder with the **normal daily summary** (no aggregate summary replaces it); one bad date can't sink the batch (returns a per-date `BatchResult`). Loaders are rebuilt inside each worker so nothing unpicklable crosses the process boundary. In addition, one overarching `batch_<UTCstamp>.log` (+ `.json`) is written at the `out_dir` root — a sibling of the `run_<date>/` folders, outside all of them — summarizing every date for single-file auditability.
 
 ### Class count
 
@@ -125,7 +161,24 @@ The Excel loader is tolerant: configurable sheet name and column names (`Tenor`,
 
 ## Output Layout
 
-### `output/portfolio_<val_date>.xlsx` — the everyday view
+Every run (single-date *or* one date within a batch) is self-contained under
+`output/run_<val_date>/`. A batch additionally drops `batch_<UTCstamp>.log` and
+`batch_<UTCstamp>.json` at the `output/` root (outside all `run_<date>/`
+folders). Layout:
+
+```
+output/
+├── run_<val_date>/
+│   ├── portfolio_<val_date>.xlsx
+│   ├── detail/<trade_id>.xlsx
+│   ├── debug/<trade_id>_debug.xlsx        (when --debug)
+│   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet
+│   └── manifest_<val_date>.json
+├── batch_<UTCstamp>.log                   (batch runs only)
+└── batch_<UTCstamp>.json                  (batch runs only)
+```
+
+### `run_<val_date>/portfolio_<val_date>.xlsx` — the everyday view
 
 | Tab | Contents |
 |---|---|
@@ -134,7 +187,7 @@ The Excel loader is tolerant: configurable sheet name and column names (`Tenor`,
 | `FixedCF` | All fixed-leg cashflows stacked, `trade_id` as leading column |
 | `Curves` | SOFR + FF zero curves used (audit trail) |
 
-### `output/detail/<trade_id>.xlsx` — drill-down per trade
+### `run_<val_date>/detail/<trade_id>.xlsx` — drill-down per trade
 
 Two tabs as originally specified — floating cashflow and fixed cashflow with full per-fixing detail. Generated alongside the portfolio file (or on a `--detail` flag).
 
@@ -222,16 +275,25 @@ F:\Projects - Github\Swaps\
 │   ├── io_excel.py
 │   ├── io_parquet.py
 │   ├── manifest.py           # run manifest writer
-│   └── portfolio.py
-├── data/{curves,fixings,trades}/
+│   ├── portfolio.py          # single-date runner (writes run_<val_date>/)
+│   └── batch.py              # parallel multi-date runner
+├── data/
+│   ├── curves/market_environment_<YYYY-MM-DD>.csv
+│   ├── fixings/fixing_cali_USD-FEDFUNDS-ON.csv
+│   └── trades/*.yaml
 ├── output/
-│   ├── portfolio_<val_date>.xlsx
-│   ├── detail/<trade_id>.xlsx
-│   ├── debug/<trade_id>_debug.xlsx  (when --debug)
-│   ├── parquet/<val_date>/{summary,floating_cf,fixed_cf,curves}.parquet
-│   └── manifest_<val_date>.json
+│   ├── run_<val_date>/
+│   │   ├── portfolio_<val_date>.xlsx
+│   │   ├── detail/<trade_id>.xlsx
+│   │   ├── debug/<trade_id>_debug.xlsx  (when --debug)
+│   │   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet
+│   │   └── manifest_<val_date>.json
+│   ├── batch_<UTCstamp>.log             (batch runs only)
+│   └── batch_<UTCstamp>.json            (batch runs only)
 ├── tests/
-└── scripts/price_portfolio.py
+└── scripts/
+    ├── price_portfolio.py        # one valuation date
+    └── price_portfolio_batch.py  # several dates, parallel
 ```
 
 ---
@@ -243,11 +305,12 @@ F:\Projects - Github\Swaps\
 - Tests: DF round-trip, log-linear interp at known points, business-day rolls
 
 **Block B — Pricing core** *(legs + pricer)*
-- `FixingHistory`, `NotionalSchedule`, `FixedLeg`, `OISFloatingLeg`, `Swap`, `SwapPricer`, DV01
+- `FixingHistory`, `NotionalSchedule`, `FixedLeg`, `OISFloatingLeg`, `Swap`, `SwapPricer`, DV01 (dual-curve parallel +1bp bump-and-reprice; see *DV01 Methodology*)
 - Tests: flat-curve sanity, par-swap test, history-split test, `clean + accrued ≈ dirty` invariant
 
 **Block C — I/O & portfolio** *(loaders, Excel, Parquet, portfolio runner, CLI)*
-- Excel + Parquet writers, `Portfolio`, `price_portfolio.py`, sample data, manifest
+- Excel + Parquet writers, `Portfolio` (per-run `run_<val_date>/` folder), `price_portfolio.py`, sample data, manifest
+- `batch.run_batch` + `price_portfolio_batch.py` — parallel multi-date runner, overarching `batch_<UTCstamp>.{log,json}`
 - Smoke run end-to-end on sample data
 
 **Block D — Regression & debug** *(golden-master + debug sockets)*
@@ -312,11 +375,12 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 ## Verification (v1 done criteria)
 
 1. `pytest -q` — all unit tests + golden-master green.
-2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces:
+2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/run_<val_date>/`:
    - `portfolio_<val_date>.xlsx` with four tabs
    - `detail/<trade_id>.xlsx` per trade
-   - `parquet/<val_date>/*.parquet`
+   - `parquet/*.parquet`
    - `manifest_<val_date>.json`
+2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `run_<val_date>/` per date plus `output/batch_<UTCstamp>.{log,json}`; non-zero exit if any date errors/partials.
 3. Hand-check one swap:
    - `clean + accrued == dirty` to < 1e-8
    - Sum of fixed PV − sum of floating PV ≈ reported NPV (within sign convention)

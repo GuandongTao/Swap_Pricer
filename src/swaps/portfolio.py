@@ -3,12 +3,29 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
+
+TRADE_ID_PREFIX = "AMEX_DAILY_IRS"
+
+
+def _qualify_amex_id(raw: str, val_date: date) -> tuple[str, str]:
+    """Reconstruct the full trade id from the trailing unique id number.
+
+    Returns ``(full_id, short_id)`` where
+    ``full_id = AMEX_DAILY_IRS_<YYYYMMDD>_<short_id>``. A legacy fully-qualified
+    id pasted into the input is tolerated: its trailing token is taken as the
+    short id so re-qualification is idempotent.
+    """
+    s = str(raw).strip()
+    if s.upper().startswith(TRADE_ID_PREFIX):
+        s = re.split(r"[-_]", s)[-1]
+    return f"{TRADE_ID_PREFIX}_{val_date:%Y%m%d}_{s}", s
 
 
 @contextmanager
@@ -52,7 +69,12 @@ class Portfolio:
         write_parquet: bool = True,
         write_debug: bool = False,
     ) -> tuple[list[SwapValuation], RunManifest]:
-        out_dir = Path(out_dir)
+        # Every run is self-contained in its own per-valuation-date folder so a
+        # single-date run and a batch run share the same layout:
+        #   <out_dir>/run_<val_date>/{portfolio_*.xlsx, detail/, debug/,
+        #                             parquet/, manifest_*.json}
+        base_out = Path(out_dir)
+        out_dir = base_out / f"run_{val_date.isoformat()}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
         manifest = RunManifest.new(val_date)
@@ -68,6 +90,13 @@ class Portfolio:
             fixings = self.fixing_loader.load("FEDFUNDS")
         with _timed(timings, "load_trades"):
             trades = self.trade_loader.load_all()
+        # Reconstruct AMEX daily IRS ids now that the valuation date is known.
+        # Trades from other loaders (e.g. yaml debug fixtures) keep their id.
+        for td in trades:
+            if td.meta.get("_id_scheme") == "amex_daily_irs":
+                full_id, short_id = _qualify_amex_id(td.meta.get("id", td.trade_id), val_date)
+                td.trade_id = full_id
+                td.meta = {**td.meta, "id": short_id}
         md = MarketData(val_date=val_date, discount_curve=sofr, projection_curve=ff, fixings=fixings)
         manifest.trade_count = len(trades)
         _log.info(
@@ -104,6 +133,7 @@ class Portfolio:
                             floating_cf=pd.DataFrame(),
                             meta={
                                 "matured": True,
+                                "id": td.meta.get("id"),
                                 "notional": td.notional,
                                 "fixed_rate": td.fixed_rate,
                                 "start_date": td.start_date,
@@ -189,7 +219,7 @@ class Portfolio:
         if write_parquet:
             _log.info("Writing parquet outputs ...")
             with _timed(timings, "write_parquet"):
-                pq_dir = out_dir / "parquet" / val_date.isoformat()
+                pq_dir = out_dir / "parquet"
                 paths = write_parquet_outputs(
                     pq_dir, valuations, {"SOFR": sofr, "FEDFUNDS": ff},
                     manifest.run_id, run_date, manifest.git_sha,
@@ -202,6 +232,7 @@ class Portfolio:
         manifest.timings = timings
         manifest.per_trade_timings = per_trade_timings
 
+        manifest.outputs["run_dir"] = str(out_dir)
         manifest_path = out_dir / f"manifest_{val_date.isoformat()}.json"
         manifest.write(manifest_path)
         manifest.outputs["manifest"] = str(manifest_path)
