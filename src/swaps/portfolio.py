@@ -69,15 +69,21 @@ class Portfolio:
         write_parquet: bool = True,
         write_debug: bool = False,
     ) -> tuple[list[SwapValuation], RunManifest]:
-        # Every run is self-contained in its own per-valuation-date folder so a
-        # single-date run and a batch run share the same layout:
-        #   <out_dir>/run_<val_date>/{portfolio_*.xlsx, detail/, debug/,
-        #                             parquet/, manifest_*.json}
-        base_out = Path(out_dir)
-        out_dir = base_out / f"run_{val_date.isoformat()}"
-        out_dir.mkdir(parents=True, exist_ok=True)
-
         manifest = RunManifest.new(val_date)
+
+        # Every run is self-contained in its own folder, named with BOTH the
+        # valuation date and the run (execution) date so reruns for different
+        # business days are kept distinct and a same-day rerun is idempotent:
+        #   <out_dir>/valdate_<val_date>_rundate_<run_date>/
+        #       {portfolio_*.xlsx, detail/, debug/, parquet/, manifest_*.json}
+        base_out = Path(out_dir)
+        run_folder = (
+            f"valdate_{val_date.isoformat()}"
+            f"_rundate_{manifest.run_date:%Y-%m-%d}"
+        )
+        out_dir = base_out / run_folder
+        out_dir.mkdir(parents=True, exist_ok=True)
+        _log.info("Run folder: %s", out_dir)
         timings: dict[str, float] = {}
         per_trade_timings: dict[str, float] = {}
 

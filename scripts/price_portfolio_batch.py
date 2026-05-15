@@ -88,12 +88,17 @@ def main(argv: list[str] | None = None) -> int:
     for r in results:
         if r.status == "error":
             log.error("%s ERROR: %s", r.val_date, r.exception)
+        elif r.status == "skipped":
+            log.warning("%s SKIPPED (no zero-rate curve, e.g. weekend/holiday): %s",
+                        r.val_date, r.exception)
         elif r.errors:
             for e in r.errors:
                 log.error("%s: %s", r.val_date, e)
 
-    # Non-zero exit if any date failed outright or priced partially.
-    return 0 if all(r.status == "ok" for r in results) else 1
+    # Non-zero exit ONLY on real failures (error / partial). 'skipped' dates
+    # (no curve published for that day) are an expected warning, not a failure.
+    bad = [r for r in results if r.status in ("error", "partial")]
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

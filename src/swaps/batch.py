@@ -46,11 +46,25 @@ def _run_one(
     """Process-pool worker. Builds loaders *inside* the worker so nothing
     unpicklable (curves, loader objects) crosses the process boundary."""
     # Imports are inside the worker so the child process sets them up cleanly.
+    import logging as _logging
+    import sys as _sys
+
     from swaps.loaders import CombinedTradeLoader
     from swaps.loaders.csv_trades import CsvTradeLoader
     from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader
     from swaps.loaders.yaml_trades import YamlTradeLoader
     from swaps.portfolio import Portfolio
+
+    # Configure logging inside the worker process so the SAME detailed
+    # per-trade progress you get from a single-date run is emitted here too
+    # (child processes don't inherit the parent's logging config). Lines are
+    # prefixed with the val_date so parallel workers stay attributable.
+    _logging.basicConfig(
+        level=_logging.INFO, stream=_sys.stdout,
+        format=f"%(asctime)s %(levelname)s [val={val_date}] %(message)s",
+    )
+    _wlog = _logging.getLogger(f"batch.{val_date}")
+    _wlog.info("===== val_date %s : run START =====", val_date)
 
     dd = Path(data_dir)
     try:
@@ -69,6 +83,8 @@ def _run_one(
             write_parquet=write_parquet,
             write_debug=write_debug,
         )
+        _wlog.info("===== val_date %s : run DONE (status=%s) =====",
+                   val_date, manifest.status)
         return BatchResult(
             val_date=val_date,
             status=manifest.status,
@@ -77,7 +93,22 @@ def _run_one(
             trade_count=manifest.trade_count,
             errors=list(manifest.errors),
         )
+    except FileNotFoundError as e:
+        # No zero-rate curve for this date (typically a weekend / holiday
+        # with no published curve). This is expected -> WARNING, not error,
+        # and it must NOT fail the batch exit code.
+        _wlog.warning("val_date %s SKIPPED: no curve available (%s)", val_date, e)
+        return BatchResult(
+            val_date=val_date,
+            status="skipped",
+            run_dir=None,
+            manifest_path=None,
+            trade_count=0,
+            errors=[],
+            exception=f"no curve for {val_date}: {e}",
+        )
     except Exception as e:  # one bad date must not sink the whole batch
+        _wlog.error("val_date %s ERROR: %s: %s", val_date, type(e).__name__, e)
         return BatchResult(
             val_date=val_date,
             status="error",
@@ -127,6 +158,8 @@ def run_batch(
             r = fut.result()
             if r.status == "error":
                 _log.error("  %s  ERROR: %s", r.val_date, r.exception)
+            elif r.status == "skipped":
+                _log.warning("  %s  SKIPPED (no curve): %s", r.val_date, r.exception)
             else:
                 _log.info(
                     "  %s  status=%s trades=%d -> %s",
@@ -145,6 +178,7 @@ def run_batch(
     n_ok = sum(1 for r in results if r.status == "ok")
     n_partial = sum(1 for r in results if r.status == "partial")
     n_err = sum(1 for r in results if r.status == "error")
+    n_skip = sum(1 for r in results if r.status == "skipped")
 
     base = Path(out_dir)
     base.mkdir(parents=True, exist_ok=True)
@@ -152,7 +186,7 @@ def run_batch(
     lines = [
         f"Batch run {ts.isoformat()}",
         f"Dates: {len(results)} ({dates[0]} .. {dates[-1]})  "
-        f"ok={n_ok} partial={n_partial} error={n_err}",
+        f"ok={n_ok} partial={n_partial} error={n_err} skipped(no-curve)={n_skip}",
         "",
     ]
     for r in results:
@@ -172,7 +206,7 @@ def run_batch(
             {
                 "run_at": ts.isoformat(),
                 "totals": {"ok": n_ok, "partial": n_partial, "error": n_err,
-                           "total": len(results)},
+                           "skipped_no_curve": n_skip, "total": len(results)},
                 "dates": [
                     {
                         "val_date": r.val_date.isoformat(),
@@ -192,7 +226,7 @@ def run_batch(
         encoding="utf-8",
     )
     _log.info(
-        "Batch summary: %d ok, %d partial, %d error -> %s",
-        n_ok, n_partial, n_err, log_path,
+        "Batch summary: %d ok, %d partial, %d error, %d skipped(no-curve) -> %s",
+        n_ok, n_partial, n_err, n_skip, log_path,
     )
     return results

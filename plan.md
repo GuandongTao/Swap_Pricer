@@ -148,10 +148,10 @@ Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic
 
 ### Portfolio & output
 
-- **`Portfolio`** — takes loaders + a list of trade ids; iterates, prices each, writes outputs. One run is self-contained in its own per-valuation-date folder `<out_dir>/run_<val_date>/` so single-date and batch runs share an identical layout.
+- **`Portfolio`** — takes loaders + a list of trade ids; iterates, prices each, writes outputs. One run is self-contained in its own folder `<out_dir>/valdate_<val_date>_rundate_<run_date>/` (folder name embeds **both** the valuation date and the execution/run date, so reruns for different business days stay distinct and a same-day rerun is idempotent). Single-date and batch runs share this identical layout.
 - **`io_excel`** — writes portfolio workbook + per-trade detail workbooks (see Output section).
 - **`io_parquet`** — same frames also dumped to Parquet for downstream automation / DB load.
-- **`batch.run_batch(val_dates, …)`** — fans several valuation dates across a `ProcessPoolExecutor` (pricing is CPU-bound). Each date is an independent `Portfolio.run` writing its own `run_<val_date>/` folder with the **normal daily summary** (no aggregate summary replaces it); one bad date can't sink the batch (returns a per-date `BatchResult`). Loaders are rebuilt inside each worker so nothing unpicklable crosses the process boundary. In addition, one overarching `batch_<UTCstamp>.log` (+ `.json`) is written at the `out_dir` root — a sibling of the `run_<date>/` folders, outside all of them — summarizing every date for single-file auditability.
+- **`batch.run_batch(val_dates, …)`** — fans several valuation dates across a `ProcessPoolExecutor` (pricing is CPU-bound). Each date is an independent `Portfolio.run` writing its own `valdate_<val_date>_rundate_<run_date>/` folder with the **normal daily summary** (no aggregate summary replaces it); one bad date can't sink the batch (returns a per-date `BatchResult`). Loaders are rebuilt inside each worker so nothing unpicklable crosses the process boundary. **Each worker configures logging to stdout** so the same detailed per-trade progress as a single-date run is emitted (lines prefixed `[val=<date>]` for attributability under parallelism). A date with **no published zero-rate curve** (typically a weekend/holiday — `FileNotFoundError` from the curve loader) is classified **`skipped`** (a WARNING, *not* an `error`) and does **not** fail the batch exit code; statuses are `ok` / `partial` / `error` / `skipped`. In addition, one overarching `batch_<UTCstamp>.log` (+ `.json`) is written at the `out_dir` root — outside all the per-run folders — with totals `ok=… partial=… error=… skipped(no-curve)=…` for single-file auditability.
 
 ### Class count
 
@@ -162,13 +162,14 @@ Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic
 ## Output Layout
 
 Every run (single-date *or* one date within a batch) is self-contained under
-`output/run_<val_date>/`. A batch additionally drops `batch_<UTCstamp>.log` and
-`batch_<UTCstamp>.json` at the `output/` root (outside all `run_<date>/`
-folders). Layout:
+`output/valdate_<val_date>_rundate_<run_date>/` (folder name carries both the
+valuation date and the execution date). A batch additionally drops
+`batch_<UTCstamp>.log` and `batch_<UTCstamp>.json` at the `output/` root
+(outside all the per-run folders). Layout:
 
 ```
 output/
-├── run_<val_date>/
+├── valdate_<val_date>_rundate_<run_date>/
 │   ├── portfolio_<val_date>.xlsx
 │   ├── detail/<trade_id>.xlsx
 │   ├── debug/<trade_id>_debug.xlsx        (when --debug)
@@ -178,7 +179,7 @@ output/
 └── batch_<UTCstamp>.json                  (batch runs only)
 ```
 
-### `run_<val_date>/portfolio_<val_date>.xlsx` — the everyday view
+### `valdate_<val_date>_rundate_<run_date>/portfolio_<val_date>.xlsx` — the everyday view
 
 | Tab | Contents |
 |---|---|
@@ -187,7 +188,7 @@ output/
 | `FixedCF` | All fixed-leg cashflows stacked, `trade_id` as leading column |
 | `Curves` | SOFR + FF zero curves used (audit trail) |
 
-### `run_<val_date>/detail/<trade_id>.xlsx` — drill-down per trade
+### `valdate_<val_date>_rundate_<run_date>/detail/<trade_id>.xlsx` — drill-down per trade
 
 Two tabs as originally specified — floating cashflow and fixed cashflow with full per-fixing detail. Generated alongside the portfolio file (or on a `--detail` flag).
 
@@ -275,14 +276,14 @@ F:\Projects - Github\Swaps\
 │   ├── io_excel.py
 │   ├── io_parquet.py
 │   ├── manifest.py           # run manifest writer
-│   ├── portfolio.py          # single-date runner (writes run_<val_date>/)
+│   ├── portfolio.py          # single-date runner (valdate_/rundate_ folder)
 │   └── batch.py              # parallel multi-date runner
 ├── data/
 │   ├── curves/market_environment_<YYYY-MM-DD>.csv
 │   ├── fixings/fixing_cail_USD-FEDFUNDS-ON.csv
 │   └── trades/*.yaml
 ├── output/
-│   ├── run_<val_date>/
+│   ├── valdate_<val_date>_rundate_<run_date>/
 │   │   ├── portfolio_<val_date>.xlsx
 │   │   ├── detail/<trade_id>.xlsx
 │   │   ├── debug/<trade_id>_debug.xlsx  (when --debug)
@@ -309,8 +310,8 @@ F:\Projects - Github\Swaps\
 - Tests: flat-curve sanity, par-swap test, history-split test, `clean + accrued ≈ dirty` invariant
 
 **Block C — I/O & portfolio** *(loaders, Excel, Parquet, portfolio runner, CLI)*
-- Excel + Parquet writers, `Portfolio` (per-run `run_<val_date>/` folder), `price_portfolio.py`, sample data, manifest
-- `batch.run_batch` + `price_portfolio_batch.py` — parallel multi-date runner, overarching `batch_<UTCstamp>.{log,json}`
+- Excel + Parquet writers, `Portfolio` (per-run `valdate_/rundate_` folder), `price_portfolio.py`, sample data, manifest
+- `batch.run_batch` + `price_portfolio_batch.py` — parallel multi-date runner, per-worker stdout logging, `skipped(no-curve)` WARNING status, overarching `batch_<UTCstamp>.{log,json}`
 - Smoke run end-to-end on sample data
 
 **Block D — Regression & debug** *(golden-master + debug sockets)*
@@ -375,12 +376,12 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 ## Verification (v1 done criteria)
 
 1. `pytest -q` — all unit tests + golden-master green.
-2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/run_<val_date>/`:
+2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/valdate_<val_date>_rundate_<run_date>/`:
    - `portfolio_<val_date>.xlsx` with four tabs
    - `detail/<trade_id>.xlsx` per trade
    - `parquet/*.parquet`
    - `manifest_<val_date>.json`
-2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `run_<val_date>/` per date plus `output/batch_<UTCstamp>.{log,json}`; non-zero exit if any date errors/partials.
+2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `valdate_/rundate_` folder per date plus `output/batch_<UTCstamp>.{log,json}`; non-zero exit only on real failures (`error`/`partial`) — dates with no published curve are reported as `skipped` (WARNING) and do not fail the run.
 3. Hand-check one swap:
    - `clean + accrued == dirty` to < 1e-8
    - Sum of fixed PV − sum of floating PV ≈ reported NPV (within sign convention)
