@@ -21,11 +21,6 @@ Thumbs.db
 # Excel lock files
 ~$*
 
-# Fixings: still local-only by user's choice
-data/fixings/*.csv
-data/fixings/*.xlsx
-data/fixings/*.xls
-
 # Golden-master snapshots are derived from market data and regenerated locally.
 tests/golden/*.json
 
@@ -38,4 +33,4 @@ tests/golden/*.json
 #   data/curves/market_environment_*.csv  -- TRACKED (raw production curve export)
 #   /output/                              -- folder kept, artifacts ignored (regenerated each run)
 #   data/trades/                          -- already tracked
-# Fixings (data/fixings/*) remain ignored unless explicitly toggled later.
+#   data/fixings/                         -- TRACKED (uploaded to the repo)
