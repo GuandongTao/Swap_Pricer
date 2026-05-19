@@ -1,19 +1,77 @@
 # Batch trade template (CSV). Drop a copy renamed without ".sample" into
 # data/trades/ and the pricer loads every row as a trade.
-# Header names match TradeDef fields (Bloomberg vocabulary). Blank cell => default.
-# Every convention is PER-LEG; only economic terms are shared.
 #
-# AUTO-DERIVED fields -- leave the column blank and it syncs to a sibling:
-#   *_pay_date_adj       blank => that leg's *_bus_day_adj
-#   *_payment_calendar   blank => that leg's *_calculation_calendar
-#   floating_reset_lag_bdays  default 0 (in-arrears OIS has no lookback)
-# Leaving these blank reproduces a Bloomberg ticket exactly (Bloomberg does
-# not expose them as separate inputs -- it derives them the same way).
-#
+# Every CONVENTION is per-leg (Bloomberg vocabulary). Only economic terms are
+# shared. Column order does not matter (matched by name); an omitted column
+# behaves exactly like a blank cell -> the default below applies.
 # trade_id carries ONLY the trailing unique id; the full
 #   AMEX_DAILY_IRS_<val_date>_<id> is reconstructed by the pricer.
-# Roll values: None/NoAdjust/Following/ModifiedFollowing/Preceding/ModifiedPreceding/Nearest
-# *_adjust: acc_and_pay|pay|none   *_roll_convention: forward|forward_eom|backward|backward_eom
+#
+# Columns:
+#   --- Required (economic terms; must be present, no default) ---
+#   trade_id                  trailing unique id number ONLY, e.g. 20496135
+#   notional                  positive number, e.g. 500000000
+#   pay_fixed                 true = pay fixed/receive float, false = receive fixed/pay float
+#   fixed_rate                decimal, e.g. 0.0456 = 4.56%
+#   start_date                ISO date, effective / first accrual day
+#   maturity_date             ISO date, termination / last accrual end (must be > start_date)
+#   fixed_frequency           1Y / 6M / 3M / 1M / 1W / 1D
+#   fixed_daycount            ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
+#
+#   --- Fixed leg conventions (optional) ---
+#   fixed_bus_day_adj         "Bus Day Adj": roll for accrual-end dates; <roll>; blank => ModifiedFollowing
+#   fixed_eff_date_adj        "Eff Date Adj": roll for the effective date; <roll>; blank => fixed_bus_day_adj
+#   fixed_pay_date_adj        "Pay Date Adj" (BBG-derived); <roll>; blank => fixed_bus_day_adj
+#   fixed_adjust              acc_and_pay = accrue on adjusted dates (default)
+#                             pay         = accrue on UNADJUSTED dates, adjust pay date only
+#                             none        = adjust nothing
+#   fixed_roll_convention     forward / forward_eom (from effective, stub at back)
+#                             backward / backward_eom (from maturity, stub at front)
+#                             *_eom snaps month-end-anchored periods to month-end; blank => forward_eom
+#   fixed_payment_delay_bdays int >=0, business-day lag accrual end -> cash; blank => 0
+#   fixed_principal_exchange  none (default) | start | end | both
+#                               start = -notional at start_date; end = +notional at final pay
+#   fixed_calculation_calendar   NY_FED (only one registered); blank => NY_FED
+#   fixed_payment_calendar       NY_FED; blank => fixed_calculation_calendar (BBG-derived)
+#
+#   --- Floating leg conventions (optional) ---
+#   floating_frequency        1Y/6M/3M/1M/1W/1D; blank => fixed_frequency (standard OIS)
+#   floating_daycount         same options as fixed_daycount; blank => ACT/360
+#   floating_spread           decimal, e.g. 0.0025 = 25 bp; excluded from compounding; blank => 0
+#   floating_bus_day_adj      "Bus Day Adj" for floating; <roll>; blank => ModifiedFollowing
+#   floating_eff_date_adj     "Eff Date Adj"; <roll>; blank => floating_bus_day_adj
+#   floating_pay_date_adj     "Pay Date Adj" (BBG-derived); <roll>; blank => floating_bus_day_adj
+#   floating_rst_bus_day_adj  "Rst Bus Day Adj": roll for the (lag-shifted) fixing date;
+#                               <roll>; blank => floating_bus_day_adj
+#   floating_adjust           acc_and_pay (default) | pay | none (same meaning as fixed_adjust)
+#   floating_roll_convention  forward/forward_eom/backward/backward_eom; blank => forward_eom
+#   floating_payment_delay_bdays int >=0; blank => 0
+#   floating_reset_lag_bdays  int >=0 business-day lookback; 0 = in-arrears OIS (BBG-derived)
+#   floating_lockout_bdays    int >=0 frozen fixings at period end; blank => 0
+#   floating_principal_exchange  none (default) | start | end | both
+#   floating_calculation_calendar  NY_FED; blank => NY_FED
+#   floating_fixing_calendar       NY_FED, the reset/fixing calendar; blank => NY_FED
+#   floating_payment_calendar      NY_FED; blank => floating_calculation_calendar (BBG-derived)
+#
+#   description               free text (optional)
+#
+#   --- Optional holiday-extras columns (add by name only if needed) ---
+#   {fixed,floating}_{calculation,payment}_calendar_extras and
+#   floating_fixing_calendar_extras : ";"/"," separated ISO dates of extra closures
+#   ..._extras_file : path to a CSV/TXT/XLSX list of extra closure dates
+#
+#   <roll> = None / NoAdjust / Following / ModifiedFollowing / Preceding /
+#            ModifiedPreceding / Nearest
+#
+# BLOOMBERG PARITY: leave *_pay_date_adj, *_payment_calendar,
+#   floating_rst_bus_day_adj and floating_reset_lag_bdays blank and the row
+#   reproduces a Bloomberg ticket exactly (Bloomberg derives them the same way).
+#
+# VALIDATION: invalid roll_convention/adjust, maturity<=start, an unregistered
+#   calendar, or an unsupported reset/payment type => HARD ERROR (row rejected).
+#   adjust=acc_and_pay with an EOM roll or a 30/360 day-count => WARNING only
+#   (still prices; logged to manifest.warnings -- a reconciliation flag).
+#
 # Lines starting with # are ignored. Blank rows are ignored.
 trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,description
 20496135,1400000000,FALSE,0.0456,2025-02-11,2027-12-15,1M,30/360,ModifiedFollowing,,,acc_and_pay,backward,2,end,NY_FED,,,ACT/360,0,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,0,0,end,NY_FED,NY_FED,,8929
