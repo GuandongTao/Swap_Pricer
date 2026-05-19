@@ -45,11 +45,16 @@ def test_defaults_when_optional_columns_omitted(tmp_path):
     t = CsvTradeLoader(tmp_path).load("MIN")
     assert t.floating_daycount == "ACT/360"
     assert t.floating_spread == 0.0
-    assert t.fixing_calendar == "NY_FED"
-    assert t.payment_calendar == "NY_FED"
-    assert t.payment_delay_bdays == 0
-    assert t.lockout_bdays == 0
-    assert t.business_day_convention == "ModifiedFollowing"
+    assert t.fixed_calculation_calendar == "NY_FED"
+    assert t.floating_calculation_calendar == "NY_FED"
+    assert t.floating_fixing_calendar == "NY_FED"
+    assert t.fixed_payment_delay_bdays == 0
+    assert t.floating_payment_delay_bdays == 0
+    assert t.floating_lockout_bdays == 0
+    assert t.fixed_bus_day_adj == "ModifiedFollowing"
+    assert t.floating_bus_day_adj == "ModifiedFollowing"
+    assert t.fixed_roll_convention == "forward_eom"
+    assert t.fixed_adjust == "acc_and_pay"
 
 
 def test_skip_blank_rows_and_comments(tmp_path):

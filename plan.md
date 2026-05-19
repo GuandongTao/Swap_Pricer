@@ -12,6 +12,81 @@ Outputs: clean / dirty / accrued / DV01 per trade plus full cashflow detail, exp
 
 ---
 
+## Bloomberg-Matched Convention Schema — branch `feature/bloomberg-convention-match`
+
+This branch rewrites the convention model to mirror Bloomberg SWPM leg
+settings. **Every convention is per-leg; the only shared (trade-level) fields
+are economic terms.** Supersedes the per-leg-roll rows in *Resolved
+Conventions* below where they conflict.
+
+**Shared / trade-level (unchanged, legitimately overarching):**
+`trade_id`, `notional`, `pay_fixed`, `fixed_rate` (fixed-only), `start_date`,
+`maturity_date`.
+
+**Removed:** `business_day_convention` (global roll fallback — gone, no shared
+fallback), shared `fixing_calendar` / `payment_calendar`, shared
+`payment_delay_bdays`, the `*_spot_roll` / `*_accrual_roll` / `*_pay_roll` /
+`*_fixing_roll` names, unprefixed `lockout_bdays`.
+
+**Per-leg field schema (Bloomberg vocabulary):**
+
+| Bloomberg | Fixed field | Floating field | Values / default |
+|---|---|---|---|
+| Eff Date Adj | `fixed_eff_date_adj` | `floating_eff_date_adj` | roll value; blank → leg Bus Day Adj |
+| Bus Day Adj | `fixed_bus_day_adj` | `floating_bus_day_adj` | roll value (required) |
+| Pay Date Adj | `fixed_pay_date_adj` | `floating_pay_date_adj` | roll value; blank → **leg's own Bus Day Adj** |
+| Rst Bus Day Adj | — | `floating_rst_bus_day_adj` | roll value; blank → leg Bus Day Adj |
+| Adjust | `fixed_adjust` | `floating_adjust` | `acc_and_pay` (=legacy) \| `pay` \| `none`; default `acc_and_pay` |
+| Roll Convention | `fixed_roll_convention` | `floating_roll_convention` | `forward` \| `forward_eom` \| `backward` \| `backward_eom`; **default `forward_eom`** |
+| Calc calendar | `fixed_calculation_calendar` | `floating_calculation_calendar` | calendar name; default `NY_FED` (FD) |
+| Reset calendar | — | `floating_fixing_calendar` | default `NY_FED` (FD) |
+| Pay calendar | `fixed_payment_calendar` | `floating_payment_calendar` | blank → **leg's Calculation calendar** (= FD) |
+| (extras) | `fixed_*_calendar_extras[/_file]` | `floating_*_calendar_extras[/_file]` | per-leg, optional |
+| Pay delay | `fixed_payment_delay_bdays` | `floating_payment_delay_bdays` | int, default 0 (no shared field) |
+| Reset/lookback lag | — | `floating_reset_lag_bdays` | int, default 0 (was `floating_fixing_lag_bdays`) |
+| Lockout | — | `floating_lockout_bdays` | int, default 0 (was `lockout_bdays`) |
+| (kept) | `fixed_frequency`, `fixed_daycount`, `fixed_principal_exchange` | `floating_frequency`, `floating_daycount`, `floating_spread`, `floating_principal_exchange` | unchanged |
+
+Roll values accepted (unchanged set): `None`/`NoAdjust`, `Following`,
+`ModifiedFollowing`, `Preceding`, `ModifiedPreceding`, `Nearest`.
+
+**Semantics / engine changes:**
+
+- **Roll Convention** owns generation direction **and** stub placement **and**
+  the EOM rule: `forward*` = generate from effective date forward, stub at
+  back, anchor = effective date; `backward*` = generate from maturity
+  backward, stub at front, anchor = maturity (this *backward* is the legacy
+  `ShortFront` behavior). `*_eom` arms the end-of-month rule: when the anchor
+  is its month's last day, every period boundary snaps to month-end; for
+  non-month-end anchors `forward_eom` ≡ `forward`. **Engine default is now
+  `forward_eom`** — existing trades & golden master move and are regenerated.
+- **Adjust** selects which dates the accrual day-count uses:
+  `acc_and_pay` → adjusted bounds (legacy behavior); `pay` → **unadjusted**
+  bounds for accrual, only the payment date adjusted; `none` → nothing
+  adjusted. `AccrualPeriod` carries **both** unadjusted and adjusted bounds
+  (additive). Payment date is re-based on the **unadjusted** period end +
+  pay delay, then rolled by Pay Date Adj (corrects the legacy behavior of
+  deriving pay from the already-accrual-adjusted end).
+- **Validation (two-tier, no strict flag):** any input combination is
+  accepted; *impossible* combos raise a hard error; combinations Bloomberg
+  grays out (e.g. fixed `adjust=acc_and_pay` with an EOM roll + 30/360
+  family) emit a WARNING into `manifest.warnings[]`. Trades still price.
+- **Hardcoded-assumption guards** (not settings): a trade requesting an
+  unimplemented calendar, a non-in-arrears reset, or a non-coupon payment
+  type raises a clear error rather than mispricing silently.
+
+**Bloomberg-derived (not separate BBG inputs — omit on matched trades):**
+`*_pay_date_adj` blank → that leg's Bus Day Adj; `*_payment_calendar` blank →
+that leg's Calculation calendar; `floating_reset_lag_bdays` default `0`
+(in-arrears OIS has no lookback). Present only so non-Bloomberg trades can
+override; omitting all five reproduces Bloomberg exactly.
+
+**Known simplifications:** the terminal/maturity date is rolled under the
+leg's Bus Day Adj (no separate termination-date adjustment); reset uses
+lookback only (no observation-shift variant) — flag per trade if needed.
+
+---
+
 ## Resolved Conventions
 
 | Topic | Decision |

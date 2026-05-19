@@ -1,61 +1,48 @@
-# Single-trade YAML template. To activate: copy this file, rename without ".sample"
-# (e.g. SWAP_TEST_001.yaml), and edit the fields below.
-#
-# Required fields are unindented. Optional fields show their defaults in comments.
+# Trade template (YAML) -- Bloomberg-matched conventions.
+# Copy to data/trades/<id>.yaml (no .sample) and edit.
+# Every convention is PER-LEG. Only economic terms are shared.
 
-trade_id: SWAP_TEST_001          # unique label
-notional: 500000000              # positive number
-pay_fixed: false                 # true = pay fixed/receive float; false = receive fixed/pay float
-fixed_rate: 0.0541               # decimal, 0.0541 = 5.41%
-start_date: 2026-03-09           # ISO date, first accrual day
-maturity_date: 2031-03-09        # ISO date, last accrual end
+# --- Required (economic terms) ---
+trade_id: SWAP_001
+notional: 500000000
+pay_fixed: true                  # true = pay fixed / receive float
+fixed_rate: 0.0400
+start_date: 2026-03-09           # ISO date, effective date
+maturity_date: 2031-03-09        # ISO date, termination date
 fixed_frequency: 1M              # 1Y / 6M / 3M / 1M / 1W / 1D
 fixed_daycount: ACT/360          # ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
 
-# --- Optional (defaults shown) ---
-floating_frequency:              # blank => same as fixed_frequency (standard OIS).
-                                 # set e.g. 3M for a cross-frequency swap (1Y fixed / 3M float)
+# --- Fixed leg conventions (Bloomberg vocabulary) ---
+fixed_bus_day_adj: ModifiedFollowing   # Bloomberg "Bus Day Adj"
+fixed_eff_date_adj:                    # "Eff Date Adj"; blank => fixed_bus_day_adj
+fixed_pay_date_adj:                    # "Pay Date Adj"; blank => fixed_bus_day_adj (Bloomberg-derived)
+fixed_adjust: acc_and_pay              # acc_and_pay | pay | none
+fixed_roll_convention: forward_eom     # forward | forward_eom | backward | backward_eom
+fixed_payment_delay_bdays: 0
+fixed_principal_exchange: none         # none | start | end | both
+fixed_calculation_calendar: NY_FED
+fixed_payment_calendar:                # blank => fixed_calculation_calendar (Bloomberg-derived)
+
+# --- Floating leg conventions ---
+floating_frequency:                    # blank => fixed_frequency (standard OIS)
 floating_daycount: ACT/360
 floating_spread: 0.0
-
-# Principal exchange -- configurable per leg. Allowed values:
-#   none   (default) -- no principal flows
-#   start            -- -notional at start_date (paid out at issuance)
-#   end              -- +notional at final payment date (received at maturity)
-#   both             -- both rows
-# Sign convention works with `pay_fixed` so the cashflow lands on the right side.
-fixed_principal_exchange: none
+floating_bus_day_adj: ModifiedFollowing
+floating_eff_date_adj:                 # blank => floating_bus_day_adj
+floating_pay_date_adj:                 # blank => floating_bus_day_adj (Bloomberg-derived)
+floating_rst_bus_day_adj:              # "Rst Bus Day Adj"; blank => floating_bus_day_adj
+floating_adjust: acc_and_pay           # acc_and_pay | pay | none
+floating_roll_convention: forward_eom
+floating_payment_delay_bdays: 0
+floating_reset_lag_bdays: 0            # business-day lookback; 0 = in-arrears OIS (Bloomberg-derived)
+floating_lockout_bdays: 0
 floating_principal_exchange: none
+floating_calculation_calendar: NY_FED
+floating_fixing_calendar: NY_FED       # reset/fixing calendar
+floating_payment_calendar:             # blank => floating_calculation_calendar (Bloomberg-derived)
 
-fixing_calendar: NY_FED
-payment_calendar: NY_FED
-payment_delay_bdays: 2           # shared default: business-day lag from accrual end to cash payment
-# fixed_payment_delay_bdays: 0       # optional per-leg override; omit/None => payment_delay_bdays
-# floating_payment_delay_bdays: 2    # optional per-leg override; omit/None => payment_delay_bdays
-lockout_bdays: 0
-business_day_convention: ModifiedFollowing      # global fallback for per-leg rolls below
-
-# --- Per-leg roll conventions (optional) ---
-# Each accepts: None / NoAdjust / Following / ModifiedFollowing (default) /
-#               Preceding / ModifiedPreceding / Nearest.
-# Leave blank ("") to fall back to `business_day_convention` above.
-#
-# Fixed leg rolls
-#   fixed_spot_roll: ""                 # rolls the unadjusted effective/start date
-#   fixed_accrual_roll: ""              # rolls each unadjusted accrual end
-#   fixed_pay_roll: ""                  # rolls each unadjusted payment date
-#
-# Floating leg rolls
-#   floating_accrual_roll: ""           # rolls each unadjusted accrual end
-#   floating_pay_roll: ""               # rolls each unadjusted payment date
-#   floating_fixing_roll: Preceding     # rolls the lookback-shifted observation date
-#   floating_fixing_lag_bdays: 0        # OIS lookback in BDs (0 = rate set in advance)
-
-description: "Free text — optional, retained in the SwapValuation meta dict."
-
-# --- Advanced: per-trade calendar customization (optional) ---
-# fixing_calendar_extras:                # inline list of extra holidays on top of NY_FED
-#   - 2026-07-06
-# fixing_calendar_extras_file: ...       # path to CSV/TXT/XLSX with a 'date' column
-# payment_calendar_extras: [...]
-# payment_calendar_extras_file: ...
+# Roll values everywhere: None / NoAdjust / Following / ModifiedFollowing /
+#   Preceding / ModifiedPreceding / Nearest.
+# Optional per-leg holiday extras (inline list or file):
+#   fixed_calculation_calendar_extras: [2027-12-24]
+#   floating_fixing_calendar_extras_file: extras/fed_closures.csv

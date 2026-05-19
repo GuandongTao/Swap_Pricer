@@ -17,6 +17,8 @@ _VALID_PEX = {"none", "start", "end", "both"}
 
 
 class FixedLeg(Leg):
+    _VALID_ADJUST = {"acc_and_pay", "pay", "none"}
+
     def __init__(
         self,
         schedule: list[AccrualPeriod],
@@ -24,6 +26,7 @@ class FixedLeg(Leg):
         fixed_rate: float,
         daycount: DayCount,
         principal_exchange: str = "none",
+        adjust: str = "acc_and_pay",
     ) -> None:
         self.schedule = list(schedule)
         self.notional = notional
@@ -33,22 +36,34 @@ class FixedLeg(Leg):
         if pex not in _VALID_PEX:
             raise ValueError(f"principal_exchange must be one of {_VALID_PEX}; got {principal_exchange!r}")
         self.principal_exchange = pex
+        adj = str(adjust).lower()
+        if adj not in self._VALID_ADJUST:
+            raise ValueError(f"adjust must be one of {self._VALID_ADJUST}; got {adjust!r}")
+        self.adjust = adj
+
+    def _acc(self, p: AccrualPeriod) -> tuple[date, date]:
+        """Accrual bounds for day-count: adjusted under ``acc_and_pay``,
+        else the unadjusted (theoretical) bounds."""
+        if self.adjust == "acc_and_pay":
+            return p.start, p.end
+        return p.unadjusted_start, p.unadjusted_end
 
     def cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
         rows = []
         for p in self.schedule:
-            dcf = self.daycount.year_fraction(p.start, p.end)
-            notional = self.notional(p.start)
+            s, e = self._acc(p)
+            dcf = self.daycount.year_fraction(s, e)
+            notional = self.notional(s)
             payment_amount = notional * self.fixed_rate * dcf
             df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
             disc_cf = payment_amount * df_pay if p.payment_date > val_date else 0.0
             rows.append(
                 {
                     "flow_type": "coupon",
-                    "accrual_start": p.start,
-                    "accrual_end": p.end,
+                    "accrual_start": s,
+                    "accrual_end": e,
                     "payment_date": p.payment_date,
-                    "period_days": (p.end - p.start).days,
+                    "period_days": (e - s).days,
                     "day_count_fraction": dcf,
                     "notional": notional,
                     "coupon_rate": self.fixed_rate,
@@ -100,9 +115,10 @@ class FixedLeg(Leg):
 
     def accrued(self, val_date: date) -> float:
         for p in self.schedule:
-            if p.start <= val_date < p.end:
-                dcf = self.daycount.year_fraction(p.start, val_date)
-                return self.notional(p.start) * self.fixed_rate * dcf
+            s, e = self._acc(p)
+            if s <= val_date < e:
+                dcf = self.daycount.year_fraction(s, val_date)
+                return self.notional(s) * self.fixed_rate * dcf
         return 0.0
 
     def to_debug_frame(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:

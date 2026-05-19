@@ -1,24 +1,21 @@
 """CSV-based trade loader.
 
-One CSV file holds many trades, one row per trade. Header names match the
-:class:`TradeDef` field names. Empty cells use the dataclass defaults.
+One CSV holds many trades, one row per trade. Header names match
+:class:`TradeDef` (Bloomberg vocabulary). Empty cells use the dataclass
+default. Only economic terms are required.
 
-Required columns (any subset of the following will be respected; defaults
-apply for missing optional columns):
+Bloomberg-derived fields auto-sync (leave the column blank / omit it):
+  * ``*_pay_date_adj``      blank -> that leg's ``*_bus_day_adj``
+  * ``*_payment_calendar``  blank -> that leg's ``*_calculation_calendar``
+  * ``floating_reset_lag_bdays`` default 0 (in-arrears OIS has no lookback)
 
-    trade_id, notional, pay_fixed, fixed_rate,
-    start_date, maturity_date, fixed_frequency, fixed_daycount,
-    floating_frequency, floating_daycount, floating_spread,
-    fixing_calendar, payment_calendar,
-    payment_delay_bdays, lockout_bdays, business_day_convention,
-    description
-
-Lines beginning with ``#`` are treated as comments and skipped.
+Lines beginning with ``#`` are comments and skipped.
 """
 
 from __future__ import annotations
 
 import io
+from dataclasses import fields
 from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
@@ -27,14 +24,26 @@ import pandas as pd
 
 from .base import TradeDef, TradeLoader
 
+_DATE_FIELDS = {"start_date", "maturity_date"}
+_FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
+_BOOL_FIELDS = {"pay_fixed"}
+_INT_FIELDS = {
+    "fixed_payment_delay_bdays", "floating_payment_delay_bdays",
+    "floating_reset_lag_bdays", "floating_lockout_bdays",
+}
+_DATELIST_FIELDS = {
+    "fixed_calculation_calendar_extras", "fixed_payment_calendar_extras",
+    "floating_calculation_calendar_extras", "floating_fixing_calendar_extras",
+    "floating_payment_calendar_extras",
+}
+_FIELD_NAMES = {f.name for f in fields(TradeDef)} - {"meta"}
+_REQUIRED = {
+    "trade_id", "notional", "pay_fixed", "fixed_rate",
+    "start_date", "maturity_date", "fixed_frequency", "fixed_daycount",
+}
+
 
 def _strip_comment_lines(text: str) -> str:
-    """Drop lines whose first non-whitespace character is '#' OR '"#'.
-
-    Excel wraps cells containing commas in quotes; a leading comment of the
-    form ``# blah, blah, blah`` round-trips as ``"# blah, blah, blah"``. Plain
-    pandas ``comment="#"`` doesn't catch the quoted form.
-    """
     keep = []
     for line in text.splitlines():
         s = line.lstrip()
@@ -59,59 +68,61 @@ def _to_date(v) -> date:
     if isinstance(v, datetime):
         return v.date()
     s = str(v).strip()
-    # Try ISO first, then US-style M/D/YYYY
     try:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return pd.to_datetime(s).date()
 
 
+def _to_date_list(v) -> list[date]:
+    s = str(v).strip()
+    if not s:
+        return []
+    return [_to_date(x) for x in s.replace(";", ",").split(",") if x.strip()]
+
+
+def _blank(v) -> bool:
+    return (
+        v is None
+        or (isinstance(v, str) and not v.strip())
+        or (isinstance(v, float) and pd.isna(v))
+    )
+
+
 def _parse_row(row: dict) -> TradeDef:
-    def get(field, default=None, parser=None):
-        v = row.get(field)
-        if v is None or (isinstance(v, str) and not v.strip()) or (isinstance(v, float) and pd.isna(v)):
-            return default
-        return parser(v) if parser else v
+    missing = _REQUIRED - {k for k, v in row.items() if not _blank(v)}
+    if missing:
+        raise ValueError(f"CSV row {row.get('trade_id')!r} missing required: {sorted(missing)}")
 
     raw_id = str(row["trade_id"]).strip()
-    # CSV trades follow the AMEX daily IRS naming scheme: the `trade_id` column
-    # carries ONLY the trailing unique id number. Portfolio.run reconstructs the
-    # full `AMEX_DAILY_IRS_<val_date>_<id>` once the valuation date is known.
     meta: dict = {"id": raw_id, "_id_scheme": "amex_daily_irs"}
-    desc = get("description", "", str)
-    if desc:
-        meta["description"] = desc
+    desc = row.get("description")
+    if not _blank(desc):
+        meta["description"] = str(desc)
 
-    return TradeDef(
-        trade_id=raw_id,
-        notional=float(row["notional"]),
-        pay_fixed=_to_bool(row["pay_fixed"]),
-        fixed_rate=float(row["fixed_rate"]),
-        start_date=_to_date(row["start_date"]),
-        maturity_date=_to_date(row["maturity_date"]),
-        fixed_frequency=str(row["fixed_frequency"]).strip(),
-        fixed_daycount=str(row["fixed_daycount"]).strip(),
-        floating_frequency=get("floating_frequency", "", str),
-        floating_daycount=get("floating_daycount", "ACT/360", str),
-        floating_spread=get("floating_spread", 0.0, float),
-        fixed_principal_exchange=get("fixed_principal_exchange", "none", str),
-        floating_principal_exchange=get("floating_principal_exchange", "none", str),
-        fixing_calendar=get("fixing_calendar", "NY_FED", str),
-        payment_calendar=get("payment_calendar", "NY_FED", str),
-        payment_delay_bdays=get("payment_delay_bdays", 0, int),
-        fixed_payment_delay_bdays=get("fixed_payment_delay_bdays", None, int),
-        floating_payment_delay_bdays=get("floating_payment_delay_bdays", None, int),
-        lockout_bdays=get("lockout_bdays", 0, int),
-        business_day_convention=get("business_day_convention", "ModifiedFollowing", str),
-        fixed_spot_roll=get("fixed_spot_roll", "", str),
-        fixed_accrual_roll=get("fixed_accrual_roll", "", str),
-        fixed_pay_roll=get("fixed_pay_roll", "", str),
-        floating_accrual_roll=get("floating_accrual_roll", "", str),
-        floating_pay_roll=get("floating_pay_roll", "", str),
-        floating_fixing_roll=get("floating_fixing_roll", "", str),
-        floating_fixing_lag_bdays=get("floating_fixing_lag_bdays", 0, int),
-        meta=meta,
-    )
+    kwargs: dict = {}
+    for name in _FIELD_NAMES:
+        if name not in row or _blank(row[name]):
+            continue
+        v = row[name]
+        if name in _DATE_FIELDS:
+            kwargs[name] = _to_date(v)
+        elif name in _FLOAT_FIELDS:
+            kwargs[name] = float(v)
+        elif name in _BOOL_FIELDS:
+            kwargs[name] = _to_bool(v)
+        elif name in _INT_FIELDS:
+            kwargs[name] = int(float(v))
+        elif name in _DATELIST_FIELDS:
+            kwargs[name] = _to_date_list(v)
+        else:
+            kwargs[name] = str(v).strip()
+
+    # CSV trades follow the AMEX daily-IRS naming scheme: the trade_id column
+    # carries ONLY the trailing unique id; Portfolio.run reconstructs the full
+    # id once the val_date is known.
+    kwargs["trade_id"] = raw_id
+    return TradeDef(**kwargs, meta=meta)
 
 
 class CsvTradeLoader(TradeLoader):

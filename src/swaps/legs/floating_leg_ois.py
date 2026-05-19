@@ -52,6 +52,7 @@ class OISFloatingLeg(Leg):
         principal_exchange: str = "none",
         fixing_roll: str = "Preceding",
         fixing_lag_bdays: int = 0,
+        adjust: str = "acc_and_pay",
     ) -> None:
         self.schedule = list(schedule)
         self.notional = notional
@@ -73,6 +74,17 @@ class OISFloatingLeg(Leg):
                 f"fixing_roll must be one of {sorted(self._VALID_ROLL)}; got {fixing_roll!r}"
             )
         self.fixing_lag_bdays = int(fixing_lag_bdays)
+        adj = str(adjust).lower()
+        if adj not in {"acc_and_pay", "pay", "none"}:
+            raise ValueError(f"adjust must be one of acc_and_pay|pay|none; got {adjust!r}")
+        self.adjust = adj
+
+    def _acc(self, p: AccrualPeriod) -> tuple[date, date]:
+        """Accrual/compounding window: adjusted under ``acc_and_pay``, else the
+        unadjusted (theoretical) bounds."""
+        if self.adjust == "acc_and_pay":
+            return p.start, p.end
+        return p.unadjusted_start, p.unadjusted_end
 
     def with_projection_curve(self, new_curve: ZeroCurve) -> "OISFloatingLeg":
         """Return a copy with a different projection curve (for DV01 / sensitivities)."""
@@ -90,6 +102,7 @@ class OISFloatingLeg(Leg):
             principal_exchange=self.principal_exchange,
             fixing_roll=self.fixing_roll,
             fixing_lag_bdays=self.fixing_lag_bdays,
+            adjust=self.adjust,
         )
 
     def _principal_rows(self, val_date: date, discount_curve: ZeroCurve) -> tuple[list[dict], list[dict]]:
@@ -137,10 +150,11 @@ class OISFloatingLeg(Leg):
 
     # ------------------------------------------------------------------ helpers
     def _fixing_dates_for_period(self, p: AccrualPeriod) -> list[date]:
-        """Business days in [start, end) per fixing calendar."""
+        """Business days in [acc_start, acc_end) per fixing calendar."""
+        s, e = self._acc(p)
         dates: list[date] = []
-        cur = p.start
-        while cur < p.end:
+        cur = s
+        while cur < e:
             if self.fixing_calendar.is_business_day(cur):
                 dates.append(cur)
             cur += timedelta(days=1)
@@ -170,11 +184,12 @@ class OISFloatingLeg(Leg):
     def _period_fixing_rows(
         self, p: AccrualPeriod, val_date: date
     ) -> list[dict]:
+        acc_s, acc_e = self._acc(p)
         accrual_days = self._fixing_dates_for_period(p)
         if not accrual_days:
             return []
         # Day-count weights: d_i = days to next accrual anchor (or to period end)
-        nexts = accrual_days[1:] + [p.end]
+        nexts = accrual_days[1:] + [acc_e]
         weights = [(nf - f).days for f, nf in zip(accrual_days, nexts)]
         # Fixing observation dates (lookback-shifted, then rolled)
         fixings = [self._fixing_date_for(a) for a in accrual_days]
@@ -203,8 +218,8 @@ class OISFloatingLeg(Leg):
             rows.append(
                 {
                     # Outer payment-period context (constant within a period)
-                    "period_start": p.start,
-                    "period_end": p.end,
+                    "period_start": acc_s,
+                    "period_end": acc_e,
                     "payment_date": p.payment_date,
                     # Per-fixing sub-accrual (one row per business day)
                     "fixing_date": f,
@@ -228,10 +243,11 @@ class OISFloatingLeg(Leg):
             growth = 1.0
             for row in rows:
                 growth *= 1.0 + row["reset_rate"] * row["day_count"] / 360.0
-            D = (p.end - p.start).days
+            acc_s, acc_e = self._acc(p)
+            D = (acc_e - acc_s).days
             comp_coupon_rate = (growth - 1.0) * 360.0 / D
             effective_rate = comp_coupon_rate + self.spread
-            notional = self.notional(p.start)
+            notional = self.notional(acc_s)
             period_cf = notional * ((growth - 1.0) + self.spread * D / 360.0)
             df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
             disc_cf = period_cf * df_pay if p.payment_date > val_date else 0.0
@@ -259,7 +275,8 @@ class OISFloatingLeg(Leg):
 
     def accrued(self, val_date: date) -> float:
         for p in self.schedule:
-            if p.start <= val_date < p.end:
+            acc_s, acc_e = self._acc(p)
+            if acc_s <= val_date < acc_e:
                 rows = self._period_fixing_rows(p, val_date)
                 if not rows:
                     return 0.0
@@ -271,9 +288,9 @@ class OISFloatingLeg(Leg):
                         end = min(row["fixing_date"] + timedelta(days=row["day_count"]), val_date)
                         d_eff = (end - row["fixing_date"]).days
                         growth *= 1.0 + row["reset_rate"] * d_eff / 360.0
-                partial_days = (val_date - p.start).days
+                partial_days = (val_date - acc_s).days
                 spread_accrual = self.spread * partial_days / 360.0
-                return self.notional(p.start) * ((growth - 1.0) + spread_accrual)
+                return self.notional(acc_s) * ((growth - 1.0) + spread_accrual)
         return 0.0
 
     # ------------------------------------------------------------------ debug
@@ -305,17 +322,18 @@ class OISFloatingLeg(Leg):
                 else:
                     proj_g *= factor
             growth = hist_g * proj_g
-            D = (p.end - p.start).days
+            acc_s, acc_e = self._acc(p)
+            D = (acc_e - acc_s).days
             comp_rate = (growth - 1.0) * 360.0 / D
-            notional = self.notional(p.start)
+            notional = self.notional(acc_s)
             period_cf = notional * ((growth - 1.0) + self.spread * D / 360.0)
             df_pay = discount_curve.df(p.payment_date) if p.payment_date > val_date else float("nan")
             disc_cf = period_cf * df_pay if p.payment_date > val_date else 0.0
             rows.append(
                 {
                     "flow_type": "coupon",
-                    "accrual_start": p.start,
-                    "accrual_end": p.end,
+                    "accrual_start": acc_s,
+                    "accrual_end": acc_e,
                     "payment_date": p.payment_date,
                     "period_days": D,
                     "day_count_fraction": D / 360.0,
@@ -384,11 +402,12 @@ class OISFloatingLeg(Leg):
                 else:
                     proj_g *= factor
             growth = hist_g * proj_g
-            D = (p.end - p.start).days
+            acc_s, acc_e = self._acc(p)
+            D = (acc_e - acc_s).days
             out.append(
                 {
-                    "accrual_start": p.start,
-                    "accrual_end": p.end,
+                    "accrual_start": acc_s,
+                    "accrual_end": acc_e,
                     "payment_date": p.payment_date,
                     "days": D,
                     "historical_product": hist_g,

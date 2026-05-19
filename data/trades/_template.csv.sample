@@ -1,45 +1,19 @@
-# Batch trade template (CSV). Drop a copy of this file (renamed without ".sample")
-# into data/trades/ and the pricer will load every row as a trade.
+# Batch trade template (CSV) -- Bloomberg-matched conventions.
+# Copy renamed without ".sample" into data/trades/.
+# Header names match TradeDef fields (Bloomberg vocabulary). Blank cell => default.
+# Every convention is PER-LEG; only economic terms are shared.
 #
-# Columns:
-#   trade_id                  unique label, e.g. SWAP_TEST_001
-#   notional                  positive number, e.g. 500000000
-#   pay_fixed                 true = pay fixed/receive float, false = receive fixed/pay float
-#   fixed_rate                decimal, e.g. 0.0541 = 5.41%
-#   start_date                ISO date, first accrual day
-#   maturity_date             ISO date, last accrual end (final pay = maturity + payment_delay_bdays)
-#   fixed_frequency           1Y / 6M / 3M / 1M / 1W / 1D
-#   fixed_daycount            ACT/360 (default) | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
-#   floating_frequency        blank => same as fixed_frequency (standard OIS); set e.g. 3M for cross-frequency
-#   floating_daycount         same options as fixed_daycount; usually ACT/360
-#   floating_spread           decimal, e.g. 0.0025 = 25 bp; usually 0
-#   fixed_principal_exchange  none (default) | start | end | both -- principal flows on fixed leg
-#   floating_principal_exchange  same options -- principal flows on floating leg
-#                                  start = -notional at start_date (paid out)
-#                                  end   = +notional at final payment date (received)
-#   fixing_calendar           NY_FED (only one supported today)
-#   payment_calendar          NY_FED
-#   payment_delay_bdays       int, business-day lag between accrual end and cash payment
-#   payment_delay_bdays       shared default; per-leg overrides below take precedence when set
-#   fixed_payment_delay_bdays    (optional col) int; blank => payment_delay_bdays
-#   floating_payment_delay_bdays (optional col) int; blank => payment_delay_bdays
-#   lockout_bdays             int, business days of frozen fixings at the period end
-#   business_day_convention   ModifiedFollowing (default) | Following | Preceding | ModifiedPreceding | Nearest | None | NoAdjust
-#                                global fallback for the per-leg rolls below
+# AUTO-DERIVED fields -- leave the column blank (or omit it) and it syncs:
+#   *_pay_date_adj       blank => that leg's *_bus_day_adj
+#   *_payment_calendar   blank => that leg's *_calculation_calendar
+#   floating_reset_lag_bdays  default 0 (in-arrears OIS has no lookback)
+# Omitting all of these reproduces a Bloomberg ticket exactly.
 #
-#   --- Per-leg roll conventions (optional; blank => fall back to business_day_convention) ---
-#   fixed_spot_roll           rolls the unadjusted effective/start date
-#   fixed_accrual_roll        rolls each unadjusted accrual end on the fixed schedule
-#   fixed_pay_roll            rolls each unadjusted payment date on the fixed leg
-#   floating_accrual_roll     rolls each unadjusted accrual end on the floating schedule
-#   floating_pay_roll         rolls each unadjusted payment date on the floating leg
-#   floating_fixing_roll      rolls the lookback-shifted fixing date; default Preceding
-#   floating_fixing_lag_bdays int business-day lookback for fixings; 0 = rate set in advance
-#
-#   description               free text (optional)
+# Roll values: None/NoAdjust/Following/ModifiedFollowing/Preceding/ModifiedPreceding/Nearest
+# *_adjust: acc_and_pay | pay | none   *_roll_convention: forward|forward_eom|backward|backward_eom
 #
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,floating_frequency,floating_daycount,floating_spread,fixed_principal_exchange,floating_principal_exchange,fixing_calendar,payment_calendar,payment_delay_bdays,lockout_bdays,business_day_convention,fixed_spot_roll,fixed_accrual_roll,fixed_pay_roll,floating_accrual_roll,floating_pay_roll,floating_fixing_roll,floating_fixing_lag_bdays,description
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,,ACT/360,0,none,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,5Y pay-float at 5.41% fixed (float freq blank => same as fixed 1M)
-SWAP_TEST_002,250000000,true,0.0380,2026-04-01,2036-04-01,1Y,ACT/360,3M,ACT/360,0,end,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,10Y cross-frequency: 1Y fixed vs 3M float + principal back on fixed leg
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,,ACT/360,0.0025,both,both,NY_FED,NY_FED,2,2,ModifiedFollowing,Following,ModifiedFollowing,Following,ModifiedFollowing,Following,Preceding,2,2Y with all rolls customised + 2-BD fixing lookback
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,description
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,5Y pay-float; pay-date adj & pay calendars auto-derived
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,10Y EOM cross-freq: fixed 1Y Following/NoAdj-eff/Adjust=pay vs 3M float
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2Y backward roll + 2-BD reset lookback + lockout

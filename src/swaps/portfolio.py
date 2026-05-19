@@ -151,6 +151,9 @@ class Portfolio:
                         ok = True
                     else:
                         swap = build_swap(td, ff, fixings)
+                        for w in swap.meta.get("convention_warnings", []):
+                            _log.warning(w)
+                            manifest.warnings.append(w)
                         v = self.pricer.price(swap, md)
                         valuations.append(v)
                         swaps_by_id[v.trade_id] = swap

@@ -155,13 +155,13 @@ start_date: 2026-06-15
 maturity_date: 2027-06-15
 fixed_frequency: 3M
 fixed_daycount: ACT/360
-fixing_calendar_extras:
+floating_fixing_calendar_extras:
   - 2026-07-06
 """,
         encoding="utf-8",
     )
     td = YamlTradeLoader(trades_dir).load("TEST_CAL")
-    assert td.fixing_calendar_extras == [date(2026, 7, 6)]
+    assert td.floating_fixing_calendar_extras == [date(2026, 7, 6)]
     swap = build_swap(td, _curve(0.04), FixingHistory())
     # 2026-07-06 is normally a Monday business day; ensure no fixing was generated for it
     rows = swap.floating.fixings_debug(VAL)

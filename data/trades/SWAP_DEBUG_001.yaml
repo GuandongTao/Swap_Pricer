@@ -8,8 +8,8 @@ fixed_rate: 0.0541
 start_date: 2026-03-09         # first accrual day (effective)
 maturity_date: 2035-11-08      # last accrual end; principal + final coupon settle at maturity + 2 BD
 
-fixed_frequency: 1M            # monthly periods, rolling on the 8th (ModFollowing skip-weekend)
-fixed_daycount: 30/360        # fixed coupon: N * R * days / 360
+fixed_frequency: 1M            # monthly periods, rolling on the 8th (backward from maturity)
+fixed_daycount: 30/360         # fixed coupon: N * R * days / 360
 floating_daycount: ACT/360     # OIS compounding uses days/360
 floating_spread: 0.0
 
@@ -17,9 +17,12 @@ floating_spread: 0.0
 fixed_principal_exchange: end
 floating_principal_exchange: end
 
-fixing_calendar: NY_FED
-payment_calendar: NY_FED
-business_day_convention: ModifiedFollowing
+# Conventions (per-leg, Bloomberg vocabulary). Roll convention 'backward'
+# preserves the original "rolling on the 8th" (generated back from maturity).
+fixed_bus_day_adj: ModifiedFollowing
+fixed_roll_convention: backward
+fixed_payment_delay_bdays: 2   # cash settles 2 NY-Fed business days after period end
 
-payment_delay_bdays: 2         # cash settles 2 NY-Fed business days after period end (weekends skipped)
-lockout_bdays: 0
+floating_bus_day_adj: ModifiedFollowing
+floating_roll_convention: backward
+floating_payment_delay_bdays: 2

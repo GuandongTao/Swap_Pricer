@@ -64,13 +64,13 @@ def test_payment_delay_applied():
 
 
 def test_short_front_stub():
-    # Effective deliberately off-grid -> a short front stub should appear
+    # Backward generation (anchor = maturity) -> a short front stub appears
     periods = generate_schedule(
         effective_date=date(2026, 8, 1),
         termination_date=date(2031, 6, 15),
         frequency="1Y",
         calendar=NY_FED,
-        stub="ShortFront",
+        roll_convention="backward",
     )
     # First period shorter than subsequent ones
     first_days = (periods[0].end - periods[0].start).days
