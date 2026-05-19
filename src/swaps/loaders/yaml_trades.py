@@ -36,12 +36,14 @@ def _parse(raw: dict, path: Path) -> TradeDef:
     if missing:
         raise ValueError(f"Trade file {path} missing required fields: {sorted(missing)}")
     known = REQUIRED | {
+        "floating_frequency",
         "floating_daycount", "floating_spread",
         "fixed_principal_exchange", "floating_principal_exchange",
         "fixing_calendar", "payment_calendar",
         "fixing_calendar_extras", "payment_calendar_extras",
         "fixing_calendar_extras_file", "payment_calendar_extras_file",
-        "payment_delay_bdays", "lockout_bdays", "business_day_convention",
+        "payment_delay_bdays", "fixed_payment_delay_bdays",
+        "floating_payment_delay_bdays", "lockout_bdays", "business_day_convention",
         "fixed_spot_roll", "fixed_accrual_roll", "fixed_pay_roll",
         "floating_accrual_roll", "floating_pay_roll",
         "floating_fixing_roll", "floating_fixing_lag_bdays",
@@ -55,6 +57,7 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         maturity_date=_to_date(raw["maturity_date"]),
         fixed_frequency=str(raw["fixed_frequency"]),
         fixed_daycount=str(raw["fixed_daycount"]),
+        floating_frequency=str(raw.get("floating_frequency", "")),
         floating_daycount=str(raw.get("floating_daycount", "ACT/360")),
         floating_spread=float(raw.get("floating_spread", 0.0)),
         fixed_principal_exchange=str(raw.get("fixed_principal_exchange", "none")),
@@ -66,6 +69,16 @@ def _parse(raw: dict, path: Path) -> TradeDef:
         fixing_calendar_extras_file=raw.get("fixing_calendar_extras_file"),
         payment_calendar_extras_file=raw.get("payment_calendar_extras_file"),
         payment_delay_bdays=int(raw.get("payment_delay_bdays", 0)),
+        fixed_payment_delay_bdays=(
+            int(raw["fixed_payment_delay_bdays"])
+            if raw.get("fixed_payment_delay_bdays") is not None
+            else None
+        ),
+        floating_payment_delay_bdays=(
+            int(raw["floating_payment_delay_bdays"])
+            if raw.get("floating_payment_delay_bdays") is not None
+            else None
+        ),
         lockout_bdays=int(raw.get("lockout_bdays", 0)),
         business_day_convention=str(raw.get("business_day_convention", "ModifiedFollowing")),
         fixed_spot_roll=str(raw.get("fixed_spot_roll", "")),

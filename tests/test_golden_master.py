@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 GOLDEN_FILE = Path(__file__).parent / "golden" / "portfolio_2026-03-31.json"
 
-FIELDS = ("clean", "dirty", "accrued", "dv01", "pv_fixed", "pv_floating")
+FIELDS = ("clean", "dirty", "accrued", "dv01", "pv_fixed", "pv_floating", "par_rate", "rate_diff_bp")
 
 
 def _run_portfolio(tmp_path: Path) -> dict[str, dict[str, float]]:

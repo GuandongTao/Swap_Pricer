@@ -8,7 +8,7 @@ apply for missing optional columns):
 
     trade_id, notional, pay_fixed, fixed_rate,
     start_date, maturity_date, fixed_frequency, fixed_daycount,
-    floating_daycount, floating_spread,
+    floating_frequency, floating_daycount, floating_spread,
     fixing_calendar, payment_calendar,
     payment_delay_bdays, lockout_bdays, business_day_convention,
     description
@@ -91,6 +91,7 @@ def _parse_row(row: dict) -> TradeDef:
         maturity_date=_to_date(row["maturity_date"]),
         fixed_frequency=str(row["fixed_frequency"]).strip(),
         fixed_daycount=str(row["fixed_daycount"]).strip(),
+        floating_frequency=get("floating_frequency", "", str),
         floating_daycount=get("floating_daycount", "ACT/360", str),
         floating_spread=get("floating_spread", 0.0, float),
         fixed_principal_exchange=get("fixed_principal_exchange", "none", str),
@@ -98,6 +99,8 @@ def _parse_row(row: dict) -> TradeDef:
         fixing_calendar=get("fixing_calendar", "NY_FED", str),
         payment_calendar=get("payment_calendar", "NY_FED", str),
         payment_delay_bdays=get("payment_delay_bdays", 0, int),
+        fixed_payment_delay_bdays=get("fixed_payment_delay_bdays", None, int),
+        floating_payment_delay_bdays=get("floating_payment_delay_bdays", None, int),
         lockout_bdays=get("lockout_bdays", 0, int),
         business_day_convention=get("business_day_convention", "ModifiedFollowing", str),
         fixed_spot_roll=get("fixed_spot_roll", "", str),

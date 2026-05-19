@@ -25,6 +25,8 @@ def _summary_row(v: SwapValuation, run_id: str, run_date, git_sha: str) -> dict:
         "maturity_date": m.get("maturity_date"),
         "pv_fixed": v.pv_fixed,
         "pv_floating": v.pv_floating,
+        "par_rate": v.par_rate,
+        "rate_diff_bp": v.rate_diff_bp,
         "clean": v.clean,
         "dirty": v.dirty,
         "accrued": v.accrued,

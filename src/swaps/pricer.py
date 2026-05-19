@@ -29,6 +29,8 @@ class SwapValuation:
     dv01: float
     pv_fixed: float
     pv_floating: float
+    par_rate: float
+    rate_diff_bp: float
     fixed_cf: pd.DataFrame
     floating_cf: pd.DataFrame
     meta: dict = field(default_factory=dict)
@@ -55,12 +57,48 @@ class SwapPricer:
         sign = -1.0 if swap.pay_fixed else 1.0
         return sign * swap.fixed.accrued(val_date) + (-sign) * swap.floating.accrued(val_date)
 
+    def par_rate(self, swap: Swap, md: MarketData) -> float:
+        """Fixed rate that re-prices the swap to zero value *as of* ``val_date``.
+
+        Closed-form (the fixed leg is linear in the rate):
+
+            par = (PV_floating - PV_fixed_principal_exchange) / annuity
+
+        where ``annuity = Σ τ_i · DF_SOFR(t_i) · N_i`` over remaining fixed
+        coupon dates (rows with ``payment_date > val_date``; past/just-paid
+        rows carry NaN DF and drop out). Recomputed every valuation date from
+        that day's curves -- it is *not* the contractual rate. Returns NaN
+        when there is no remaining annuity (matured / fully-paid fixed leg).
+        """
+        fixed_cf = swap.fixed.cashflows(md.val_date, md.discount_curve)
+        if fixed_cf.empty:
+            return float("nan")
+        coupons = fixed_cf[fixed_cf["flow_type"] == "coupon"]
+        annuity = float(
+            (coupons["day_count_fraction"] * coupons["notional"] * coupons["df_to_payment"])
+            .fillna(0.0)
+            .sum()
+        )
+        if abs(annuity) < 1e-12:
+            return float("nan")
+        pv_fixed_principal = float(
+            fixed_cf.loc[fixed_cf["flow_type"] != "coupon", "discounted_cashflow"].sum()
+        )
+        pv_floating = swap.floating.pv(md.val_date, md.discount_curve)
+        return (pv_floating - pv_fixed_principal) / annuity
+
     # ------------------------------------------------------------------ public
     def price(self, swap: Swap, md: MarketData) -> SwapValuation:
         pv_fixed, pv_float, dirty = self._signed_pv(swap, md)
         accrued = self._accrued(swap, md.val_date)
         clean = dirty - accrued
         dv01 = self._dv01(swap, md)
+        par = self.par_rate(swap, md)
+        rate_diff_bp = (
+            (swap.fixed.fixed_rate - par) * 1e4
+            if par == par  # not NaN
+            else float("nan")
+        )
         fixed_cf = swap.fixed.cashflows(md.val_date, md.discount_curve)
         floating_cf = swap.floating.cashflows(md.val_date, md.discount_curve)
         floating_cf_by_period = swap.floating.period_cashflows(md.val_date, md.discount_curve)
@@ -73,6 +111,8 @@ class SwapPricer:
             dv01=dv01,
             pv_fixed=pv_fixed,
             pv_floating=pv_float,
+            par_rate=par,
+            rate_diff_bp=rate_diff_bp,
             fixed_cf=fixed_cf,
             floating_cf=floating_cf,
             meta=dict(swap.meta),
