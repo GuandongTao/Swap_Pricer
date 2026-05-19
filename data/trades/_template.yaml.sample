@@ -13,6 +13,8 @@ fixed_frequency: 1M              # 1Y / 6M / 3M / 1M / 1W / 1D
 fixed_daycount: ACT/360          # ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
 
 # --- Optional (defaults shown) ---
+floating_frequency:              # blank => same as fixed_frequency (standard OIS).
+                                 # set e.g. 3M for a cross-frequency swap (1Y fixed / 3M float)
 floating_daycount: ACT/360
 floating_spread: 0.0
 
@@ -27,7 +29,9 @@ floating_principal_exchange: none
 
 fixing_calendar: NY_FED
 payment_calendar: NY_FED
-payment_delay_bdays: 2           # business-day lag from accrual end to cash payment
+payment_delay_bdays: 2           # shared default: business-day lag from accrual end to cash payment
+# fixed_payment_delay_bdays: 0       # optional per-leg override; omit/None => payment_delay_bdays
+# floating_payment_delay_bdays: 2    # optional per-leg override; omit/None => payment_delay_bdays
 lockout_bdays: 0
 business_day_convention: ModifiedFollowing      # global fallback for per-leg rolls below
 

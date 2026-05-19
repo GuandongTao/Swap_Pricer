@@ -135,6 +135,7 @@ class Portfolio:
                             val_date=val_date,
                             clean=0.0, dirty=0.0, accrued=0.0, dv01=0.0,
                             pv_fixed=0.0, pv_floating=0.0,
+                            par_rate=float("nan"), rate_diff_bp=float("nan"),
                             fixed_cf=pd.DataFrame(),
                             floating_cf=pd.DataFrame(),
                             meta={

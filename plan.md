@@ -183,7 +183,7 @@ output/
 
 | Tab | Contents |
 |---|---|
-| `Summary` | One row per trade: trade_id, notional, fixed_rate, start, maturity, clean, dirty, accrued, DV01, PV(fixed), PV(floating) |
+| `Summary` | One row per trade: trade_id, notional, fixed_rate, start, maturity, clean, dirty, accrued, DV01, PV(fixed), PV(floating), par_rate, rate_diff_bp |
 | `FloatingCF` | All floating-leg cashflows stacked, `trade_id` as leading column |
 | `FixedCF` | All fixed-leg cashflows stacked, `trade_id` as leading column |
 | `Curves` | SOFR + FF zero curves used (audit trail) |

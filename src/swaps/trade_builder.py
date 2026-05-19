@@ -48,29 +48,49 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
     def _r(v: str) -> str:
         return v if v else td.business_day_convention
 
+    # Per-leg payment delay; None falls back to the shared payment_delay_bdays.
+    fixed_pd = (
+        td.fixed_payment_delay_bdays
+        if td.fixed_payment_delay_bdays is not None
+        else td.payment_delay_bdays
+    )
+    float_pd = (
+        td.floating_payment_delay_bdays
+        if td.floating_payment_delay_bdays is not None
+        else td.payment_delay_bdays
+    )
+
     schedule = generate_schedule(
         effective_date=td.start_date,
         termination_date=td.maturity_date,
         frequency=td.fixed_frequency,
         calendar=fix_cal,
         business_day_convention=td.business_day_convention,
-        payment_delay_bdays=td.payment_delay_bdays,
+        payment_delay_bdays=fixed_pd,
         payment_calendar=pay_cal,
         spot_roll=_r(td.fixed_spot_roll),
         accrual_roll=_r(td.fixed_accrual_roll),
         pay_roll=_r(td.fixed_pay_roll),
     )
-    # If floating accrual/pay rolls differ from fixed, rebuild a floating schedule.
+    # Floating leg gets its own schedule whenever its payment frequency or
+    # accrual/pay rolls diverge from the fixed leg. Blank floating_frequency
+    # falls back to fixed_frequency (standard OIS: legs share periods).
+    float_freq = td.floating_frequency or td.fixed_frequency
     fl_acc = _r(td.floating_accrual_roll)
     fl_pay = _r(td.floating_pay_roll)
-    if (fl_acc, fl_pay) != (_r(td.fixed_accrual_roll), _r(td.fixed_pay_roll)):
+    needs_float_schedule = (
+        float_freq != td.fixed_frequency
+        or float_pd != fixed_pd
+        or (fl_acc, fl_pay) != (_r(td.fixed_accrual_roll), _r(td.fixed_pay_roll))
+    )
+    if needs_float_schedule:
         float_schedule = generate_schedule(
             effective_date=td.start_date,
             termination_date=td.maturity_date,
-            frequency=td.fixed_frequency,
+            frequency=float_freq,
             calendar=fix_cal,
             business_day_convention=td.business_day_convention,
-            payment_delay_bdays=td.payment_delay_bdays,
+            payment_delay_bdays=float_pd,
             payment_calendar=pay_cal,
             spot_roll=_r(td.fixed_spot_roll),
             accrual_roll=fl_acc,
@@ -90,7 +110,7 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         fixings=fixings,
         daycount=get_daycount(td.floating_daycount),
         fixing_calendar=fix_cal,
-        payment_delay_bdays=td.payment_delay_bdays,
+        payment_delay_bdays=float_pd,
         lockout_bdays=td.lockout_bdays,
         payment_calendar=pay_cal,
         spread=td.floating_spread,
@@ -109,8 +129,11 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
             "start_date": td.start_date,
             "maturity_date": td.maturity_date,
             "fixed_frequency": td.fixed_frequency,
+            "floating_frequency": float_freq,
             "fixed_daycount": td.fixed_daycount,
             "floating_daycount": td.floating_daycount,
+            "fixed_payment_delay_bdays": fixed_pd,
+            "floating_payment_delay_bdays": float_pd,
             **td.meta,
         },
     )

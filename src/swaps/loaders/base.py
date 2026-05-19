@@ -30,6 +30,10 @@ class TradeDef:
     maturity_date: date
     fixed_frequency: str
     fixed_daycount: str
+    # Floating-leg payment frequency. Blank ("") falls back to fixed_frequency
+    # (the standard compounded-in-arrears OIS convention: legs share periods).
+    # Set explicitly for cross-frequency structures, e.g. 1Y fixed / 3M float.
+    floating_frequency: str = ""
     floating_daycount: str = "ACT/360"
     floating_spread: float = 0.0
     # Principal-exchange policy, separately configurable per leg.
@@ -43,7 +47,11 @@ class TradeDef:
     payment_calendar_extras: list[date] = field(default_factory=list)
     fixing_calendar_extras_file: str | None = None
     payment_calendar_extras_file: str | None = None
+    # Shared payment delay (business days between accrual end and cash date).
+    # Per-leg overrides below; each falls back to this when left None.
     payment_delay_bdays: int = 0
+    fixed_payment_delay_bdays: int | None = None
+    floating_payment_delay_bdays: int | None = None
     lockout_bdays: int = 0
     business_day_convention: str = "ModifiedFollowing"
     # Per-leg roll conventions. Each falls back to `business_day_convention` when

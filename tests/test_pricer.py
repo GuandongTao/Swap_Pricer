@@ -112,6 +112,74 @@ def test_clean_plus_accrued_equals_dirty_inprogress_period():
     assert v.accrued != 0.0  # confirms mid-period
 
 
+def test_par_rate_prices_to_zero():
+    """Repricing the swap struck at its own reported par rate must give ~0 NPV.
+
+    Par is recomputed from this val_date's curves (off-market 4.5%/3.8%),
+    never an inception value.
+    """
+    swap = _build_swap(0.04)
+    md = MarketData(VAL, _curve(0.045, "SOFR"), _curve(0.038, "FF"), FixingHistory())
+    par = SwapPricer().par_rate(swap, md)
+    repriced = _build_swap(par)
+    v = SwapPricer().price(repriced, md)
+    assert v.dirty == pytest.approx(0.0, abs=1e-4)
+
+
+def test_clean_decomposes_into_annuity_times_rate_gap():
+    """Invariant: clean ≈ ±annuity·(fixed − par). Pay-fixed → sign is -1."""
+    fixed_rate = 0.05
+    swap = _build_swap(fixed_rate, pay_fixed=True)
+    md = MarketData(VAL, _curve(0.045, "SOFR"), _curve(0.038, "FF"), FixingHistory())
+    v = SwapPricer().price(swap, md)
+
+    fixed_cf = swap.fixed.cashflows(md.val_date, md.discount_curve)
+    coupons = fixed_cf[fixed_cf["flow_type"] == "coupon"]
+    annuity = float(
+        (coupons["day_count_fraction"] * coupons["notional"] * coupons["df_to_payment"])
+        .fillna(0.0)
+        .sum()
+    )
+    expected_clean = -annuity * (fixed_rate - v.par_rate)  # pay-fixed sign
+    assert v.clean == pytest.approx(expected_clean, rel=1e-6)
+    assert v.rate_diff_bp == pytest.approx((fixed_rate - v.par_rate) * 1e4, rel=1e-9)
+
+
+def _swap_with_proj(proj_rate: float) -> Swap:
+    """Same fixed trade, floating leg projecting off a given flat rate."""
+    sch = generate_schedule(
+        effective_date=date(2026, 6, 15),
+        termination_date=date(2031, 6, 15),
+        frequency="1Y",
+        calendar=NY_FED,
+    )
+    fixed = FixedLeg(sch, ConstantNotional(10_000_000), 0.04, ACT_360)
+    floating = OISFloatingLeg(
+        schedule=sch,
+        notional=ConstantNotional(10_000_000),
+        projection_curve=_curve(proj_rate, "FF"),
+        fixings=FixingHistory(),
+        daycount=ACT_360,
+        fixing_calendar=NY_FED,
+    )
+    return Swap(trade_id="TEST", fixed=fixed, floating=floating, pay_fixed=True)
+
+
+def test_par_rate_moves_with_val_date_curves():
+    """Two different market environments => two different par rates. Par tracks
+    the val_date market (here the projection curve), not a stored inception
+    value; with flat curves par ≈ the flat rate."""
+    par_lo = SwapPricer().par_rate(
+        _swap_with_proj(0.030), MarketData(VAL, _curve(0.030, "SOFR"), _curve(0.030, "FF"), FixingHistory())
+    )
+    par_hi = SwapPricer().par_rate(
+        _swap_with_proj(0.060), MarketData(VAL, _curve(0.060, "SOFR"), _curve(0.060, "FF"), FixingHistory())
+    )
+    assert par_hi > par_lo
+    assert par_lo == pytest.approx(0.030, abs=2e-3)
+    assert par_hi == pytest.approx(0.060, abs=2e-3)
+
+
 def test_dv01_sign_receive_fixed_is_positive():
     """Receive-fixed swaps gain value when rates fall, lose when rates rise -> DV01 > 0."""
     swap = _build_swap(0.04, pay_fixed=False)
