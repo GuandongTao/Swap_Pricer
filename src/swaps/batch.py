@@ -42,6 +42,8 @@ def _run_one(
     write_detail: bool,
     write_parquet: bool,
     write_debug: bool,
+    pillar_dates: bool = False,
+    verbose: bool = False,
 ) -> BatchResult:
     """Process-pool worker. Builds loaders *inside* the worker so nothing
     unpicklable (curves, loader objects) crosses the process boundary."""
@@ -51,6 +53,7 @@ def _run_one(
 
     from swaps.loaders import CombinedTradeLoader
     from swaps.loaders.csv_trades import CsvTradeLoader
+    from swaps.loaders.dated import DatedCurveLoader
     from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader
     from swaps.loaders.yaml_trades import YamlTradeLoader
     from swaps.portfolio import Portfolio
@@ -60,7 +63,7 @@ def _run_one(
     # (child processes don't inherit the parent's logging config). Lines are
     # prefixed with the val_date so parallel workers stay attributable.
     _logging.basicConfig(
-        level=_logging.INFO, stream=_sys.stdout,
+        level=_logging.INFO if verbose else _logging.WARNING, stream=_sys.stdout,
         format=f"%(asctime)s %(levelname)s [val={val_date}] %(message)s",
     )
     _wlog = _logging.getLogger(f"batch.{val_date}")
@@ -68,8 +71,12 @@ def _run_one(
 
     dd = Path(data_dir)
     try:
+        curve_loader = (
+            DatedCurveLoader(dd / "curves") if pillar_dates
+            else ExcelCurveLoader(dd / "curves")
+        )
         pf = Portfolio(
-            ExcelCurveLoader(dd / "curves"),
+            curve_loader,
             ExcelFixingLoader(dd / "fixings" / fixing_file),
             CombinedTradeLoader(
                 YamlTradeLoader(dd / "trades"),
@@ -130,6 +137,8 @@ def run_batch(
     write_detail: bool = True,
     write_parquet: bool = True,
     write_debug: bool = False,
+    pillar_dates: bool = False,
+    verbose: bool = False,
 ) -> list[BatchResult]:
     """Price ``val_dates`` in parallel. Returns one ``BatchResult`` per date,
     ordered by ``val_date``. Each date's outputs land in
@@ -151,6 +160,7 @@ def run_batch(
             ex.submit(
                 _run_one, d, data_dir, out_dir, fixing_file,
                 write_detail, write_parquet, write_debug,
+                pillar_dates, verbose,
             ): d
             for d in dates
         }

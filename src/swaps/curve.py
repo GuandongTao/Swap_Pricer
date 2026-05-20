@@ -100,6 +100,41 @@ class ZeroCurve:
         self._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
         self._log_df = np.concatenate(([0.0], np.log(np.array([p.df for p in parsed], dtype=np.float64))))
 
+    @classmethod
+    def from_dated_pillars(
+        cls,
+        val_date: date,
+        pillars: dict[date, float],
+        rate_quoting: RateQuoting | None = None,
+        name: str = "",
+    ) -> "ZeroCurve":
+        """Build a ZeroCurve from explicit ``(pillar_date, zero_rate)`` pairs.
+
+        Bypasses the tenor->date conversion (no ``ON``/``TN``/``NM``/``NY``
+        parsing); the loader supplies pillar dates directly. ``Pillar.tenor``
+        is set to the ISO date string for traceability. All downstream
+        behaviour (DF interpolation, RateQuoting, dual-curve pricing) is
+        identical to the tenor-keyed constructor.
+        """
+        obj = cls.__new__(cls)
+        obj.val_date = val_date
+        obj.rate_quoting = rate_quoting or DEFAULT
+        obj.name = name
+        if not pillars:
+            raise ValueError("ZeroCurve requires at least one pillar")
+        parsed: list[Pillar] = []
+        for d, rate in pillars.items():
+            days = (d - val_date).days
+            if days <= 0:
+                raise ValueError(f"Pillar {d} <= val_date {val_date}")
+            df = obj.rate_quoting.rate_to_df(float(rate), days)
+            parsed.append(Pillar(tenor=d.isoformat(), pillar_date=d, days=days, zero_rate=float(rate), df=df))
+        parsed.sort(key=lambda p: p.days)
+        obj._pillars = tuple(parsed)
+        obj._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
+        obj._log_df = np.concatenate(([0.0], np.log(np.array([p.df for p in parsed], dtype=np.float64))))
+        return obj
+
     @property
     def pillars(self) -> tuple[Pillar, ...]:
         return self._pillars

@@ -45,9 +45,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-detail", action="store_true", help="Skip per-trade detail workbooks")
     p.add_argument("--no-parquet", action="store_true", help="Skip parquet outputs")
     p.add_argument("--debug", action="store_true", help="Write per-trade debug workbooks")
+    p.add_argument(
+        "--pillar-dates", action="store_true",
+        help="Use dated-pillars curve format (sofr_<val_date>.csv + ff_<val_date>.csv) "
+             "instead of the market_environment file.",
+    )
+    p.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Show INFO-level progress in parent and workers. Default WARNING-only.",
+    )
     args = p.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
+    level = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(level=level, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("price_portfolio_batch")
 
     dates = []
@@ -83,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         write_detail=not args.no_detail,
         write_parquet=not args.no_parquet,
         write_debug=args.debug,
+        pillar_dates=args.pillar_dates,
+        verbose=args.verbose,
     )
 
     for r in results:
@@ -95,10 +107,13 @@ def main(argv: list[str] | None = None) -> int:
             for e in r.errors:
                 log.error("%s: %s", r.val_date, e)
 
-    # Non-zero exit ONLY on real failures (error / partial). 'skipped' dates
-    # (no curve published for that day) are an expected warning, not a failure.
-    bad = [r for r in results if r.status in ("error", "partial")]
-    return 1 if bad else 0
+    # Exit codes: 0 ok/skipped; 1 any date errored; 3 partial-only (no errors).
+    # 'skipped' (no curve published) is a warning, not a failure.
+    if any(r.status == "error" for r in results):
+        return 1
+    if any(r.status == "partial" for r in results):
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
