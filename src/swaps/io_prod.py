@@ -113,14 +113,19 @@ _SUM_COLS: tuple[int, ...] = (
 
 
 def _fmt(v) -> str:
-    """Render a value for the CSV. ``None`` / NaN -> blank string."""
+    """Render a value for the CSV. ``None`` / NaN -> blank string.
+
+    Floats are emitted via ``repr()``: the shortest decimal that round-trips
+    to the exact same IEEE-754 double. No silent rounding -- a $500M NPV
+    keeps every cent. (The earlier ``format(v, "g")`` defaulted to 6 sig
+    figs and silently mangled large-notional numbers.)
+    """
     if v is None:
         return ""
     if isinstance(v, float):
-        # NaN -> blank (matched-on-input matures, missing par, etc.)
-        if v != v:
+        if v != v:                       # NaN -> blank
             return ""
-        return repr(v) if abs(v) >= 1e16 else format(v, "g")  # 'g' trims trailing zeros
+        return repr(v)
     if isinstance(v, date):
         return v.isoformat()
     return str(v)
@@ -194,7 +199,7 @@ def _footer(rows: list[list[str]], n_trades: int) -> list[str]:
                     s += float(v)
                 except ValueError:
                     pass
-        cells[col_idx] = format(s, "g")
+        cells[col_idx] = repr(s)
     return cells
 
 
