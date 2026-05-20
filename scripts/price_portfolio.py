@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from swaps.loaders import CombinedTradeLoader  # noqa: E402
 from swaps.loaders.csv_trades import CsvTradeLoader  # noqa: E402
-from swaps.loaders.dated import DatedCurveLoader  # noqa: E402
+from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader  # noqa: E402
 from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader  # noqa: E402
 from swaps.loaders.yaml_trades import YamlTradeLoader  # noqa: E402
 from swaps.portfolio import Portfolio  # noqa: E402
@@ -39,10 +39,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-detail", action="store_true", help="Skip per-trade detail workbooks")
     p.add_argument("--no-parquet", action="store_true", help="Skip parquet outputs")
     p.add_argument("--debug", action="store_true", help="Write per-trade debug workbooks (intermediate frames)")
-    p.add_argument(
+    curve_src = p.add_mutually_exclusive_group()
+    curve_src.add_argument(
         "--pillar-dates", action="store_true",
-        help="Use the dated-pillars curve format (sofr_<val_date>.csv + ff_<val_date>.csv) "
-             "instead of the market_environment file. Mutually exclusive with the default path.",
+        help="Dated-pillars curve format: sofr_<val_date>.csv + ff_<val_date>.csv "
+             "(no header; col A pillar date ISO; col B zero rate decimal).",
+    )
+    curve_src.add_argument(
+        "--pillar-dates-df", action="store_true",
+        help="Dated-DFs curve format: sofr_df_<val_date>.csv + ff_df_<val_date>.csv "
+             "(same shape as --pillar-dates but col B is the discount factor; "
+             "bypasses RateQuoting entirely).",
     )
     p.add_argument(
         "-v", "--verbose", action="store_true",
@@ -64,7 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     data_dir = Path(args.data_dir)
     out_dir = Path(args.out_dir)
 
-    if args.pillar_dates:
+    if args.pillar_dates_df:
+        curve_loader = DatedDFCurveLoader(data_dir / "curves")
+    elif args.pillar_dates:
         curve_loader = DatedCurveLoader(data_dir / "curves")
     else:
         curve_loader = ExcelCurveLoader(data_dir / "curves")

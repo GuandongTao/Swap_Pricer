@@ -43,6 +43,7 @@ def _run_one(
     write_parquet: bool,
     write_debug: bool,
     pillar_dates: bool = False,
+    pillar_dates_df: bool = False,
     verbose: bool = False,
 ) -> BatchResult:
     """Process-pool worker. Builds loaders *inside* the worker so nothing
@@ -53,7 +54,7 @@ def _run_one(
 
     from swaps.loaders import CombinedTradeLoader
     from swaps.loaders.csv_trades import CsvTradeLoader
-    from swaps.loaders.dated import DatedCurveLoader
+    from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader
     from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader
     from swaps.loaders.yaml_trades import YamlTradeLoader
     from swaps.portfolio import Portfolio
@@ -71,10 +72,12 @@ def _run_one(
 
     dd = Path(data_dir)
     try:
-        curve_loader = (
-            DatedCurveLoader(dd / "curves") if pillar_dates
-            else ExcelCurveLoader(dd / "curves")
-        )
+        if pillar_dates_df:
+            curve_loader = DatedDFCurveLoader(dd / "curves")
+        elif pillar_dates:
+            curve_loader = DatedCurveLoader(dd / "curves")
+        else:
+            curve_loader = ExcelCurveLoader(dd / "curves")
         pf = Portfolio(
             curve_loader,
             ExcelFixingLoader(dd / "fixings" / fixing_file),
@@ -138,6 +141,7 @@ def run_batch(
     write_parquet: bool = True,
     write_debug: bool = False,
     pillar_dates: bool = False,
+    pillar_dates_df: bool = False,
     verbose: bool = False,
 ) -> list[BatchResult]:
     """Price ``val_dates`` in parallel. Returns one ``BatchResult`` per date,
@@ -160,7 +164,7 @@ def run_batch(
             ex.submit(
                 _run_one, d, data_dir, out_dir, fixing_file,
                 write_detail, write_parquet, write_debug,
-                pillar_dates, verbose,
+                pillar_dates, pillar_dates_df, verbose,
             ): d
             for d in dates
         }
