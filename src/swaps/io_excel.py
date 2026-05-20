@@ -97,13 +97,16 @@ def write_trade_debug_workbook(
     sofr: ZeroCurve,
     ff: ZeroCurve,
     fixings,
-    grid_days: int = 60,
+    grid_days: int | None = None,
 ) -> None:
     """Per-trade debug workbook: dump every intermediate frame as a separate tab.
 
     Tabs:
       SOFR_pillars / FF_pillars              -- raw curve parsing audit
-      SOFR_df_grid / FF_df_grid              -- daily DFs over [val_date, +grid_days]
+      SOFR_df_grid / FF_df_grid              -- daily DFs over the trade's full
+                                               horizon by default (val_date .. last
+                                               cashflow); pass ``grid_days=N`` to
+                                               clamp to a shorter front-end window.
       FixingsUsed                            -- historical fixings in the trade window
       FloatingFixings                        -- per-fixing rows BEFORE compounding (most useful for hand-checks)
       FloatingPeriods                        -- per-period historical product * projected product
@@ -114,7 +117,18 @@ def write_trade_debug_workbook(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    grid_end = val_date + timedelta(days=grid_days)
+    if grid_days is None:
+        # Cover the trade's entire remaining horizon: last cashflow on either leg.
+        last_dates: list = []
+        if swap.fixed.schedule:
+            last_dates.append(swap.fixed.schedule[-1].payment_date)
+        if swap.floating.schedule:
+            last_dates.append(swap.floating.schedule[-1].payment_date)
+        grid_end = max(last_dates) if last_dates else val_date + timedelta(days=60)
+        if grid_end <= val_date:
+            grid_end = val_date + timedelta(days=60)  # matured trade fallback
+    else:
+        grid_end = val_date + timedelta(days=grid_days)
     with pd.ExcelWriter(out_path, engine="openpyxl") as w:
         sofr.to_debug_frame().to_excel(w, sheet_name="SOFR_pillars", index=False)
         ff.to_debug_frame().to_excel(w, sheet_name="FF_pillars", index=False)
