@@ -115,6 +115,22 @@ def test_df_loader_rejects_duplicate_pillar(tmp_path):
         DatedDFCurveLoader(tmp_path).load(VAL, "SOFR")
 
 
+def test_df_loader_accepts_us_style_dates(tmp_path):
+    """M/D/YYYY (e.g. '4/9/2026') is a common export format; loader must
+    accept it alongside ISO YYYY-MM-DD."""
+    p = tmp_path / "sofr_df_2026-03-31.csv"
+    p.write_text("4/9/2026,0.999\n4/30/2026,0.997\n6/30/2026,0.992\n", encoding="utf-8")
+    c = DatedDFCurveLoader(tmp_path).load(VAL, "SOFR")
+    assert [p.pillar_date for p in c.pillars] == [date(2026, 4, 9), date(2026, 4, 30), date(2026, 6, 30)]
+
+
+def test_df_loader_accepts_mixed_date_formats(tmp_path):
+    p = tmp_path / "sofr_df_2026-03-31.csv"
+    p.write_text("2026-04-09,0.999\n4/30/2026,0.997\n2026/06/30,0.992\n", encoding="utf-8")
+    c = DatedDFCurveLoader(tmp_path).load(VAL, "SOFR")
+    assert [p.pillar_date for p in c.pillars] == [date(2026, 4, 9), date(2026, 4, 30), date(2026, 6, 30)]
+
+
 def test_df_loader_skips_blank_lines(tmp_path):
     p = tmp_path / "sofr_df_2026-03-31.csv"
     p.write_text("2026-06-30,0.99\n\n2027-06-30,0.96\n\n", encoding="utf-8")

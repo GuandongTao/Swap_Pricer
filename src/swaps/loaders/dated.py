@@ -21,6 +21,8 @@ import csv
 from datetime import date, datetime
 from pathlib import Path
 
+import pandas as pd
+
 from ..curve import ZeroCurve
 from ..rate_quoting import DEFAULT, RateQuoting
 from .base import CurveLoader
@@ -28,9 +30,25 @@ from .base import CurveLoader
 _CANONICAL = {"SOFR": "sofr", "FEDFUNDS": "ff", "FF": "ff", "FED_FUNDS": "ff"}
 _CANONICAL_DF = {"SOFR": "sofr_df", "FEDFUNDS": "ff_df", "FF": "ff_df", "FED_FUNDS": "ff_df"}
 
+# Common short formats tried before falling through to pandas' permissive parser.
+_DATE_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%m-%d-%Y", "%d-%m-%Y")
+
 
 def _parse_date(s: str) -> date:
-    return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+    """Permissive date parse. Tries ISO and the common US/EU short forms,
+    then falls back to pandas' general parser. Accepts e.g. ``2026-04-09``,
+    ``4/9/2026``, ``04-09-2026``, ``2026/04/09``.
+    """
+    s = s.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return pd.to_datetime(s).date()
+    except Exception as e:
+        raise ValueError(f"Unrecognized date format: {s!r}") from e
 
 
 class DatedCurveLoader(CurveLoader):
