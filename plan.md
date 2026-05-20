@@ -209,14 +209,19 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 
 ### Loaders (input abstraction)
 
-- **`CurveLoader`** *(ABC)* — `load(val_date, curve_name) → ZeroCurve`.
-  - `ExcelCurveLoader` *(now)*, `DataFrameCurveLoader` *(tests & future automation)*. Ports for DB/API later.
+- **`CurveLoader`** *(ABC)* — `load(val_date, curve_name) → ZeroCurve`. Three concrete implementations selected by CLI flag (mutually exclusive):
+  - `ExcelCurveLoader` *(default; no flag)* — reads the production `market_environment_YYYY-MM-DD.csv`; converts zero rates to DFs via `RateQuoting` (default `ContinuousACT360`).
+  - `DatedCurveLoader` *(`--pillar-dates`)* — reads two no-header CSVs per val_date, `sofr_YYYY-MM-DD.csv` and `ff_YYYY-MM-DD.csv` (col A pillar date ISO, col B zero rate decimal). Bypasses `tenor_to_date`; same `RateQuoting` is still applied to convert rates → DFs.
+  - `DatedDFCurveLoader` *(`--pillar-dates-df`)* — reads `sofr_df_YYYY-MM-DD.csv` and `ff_df_YYYY-MM-DD.csv` (col A pillar date ISO, col B = **discount factor**). Bypasses `RateQuoting` entirely; supplied DFs feed straight into the log-linear interpolation pipeline. `Pillar.zero_rate` is `NaN` (no quoting convention was applied — honest signal in the debug frame). DV01 bumping on this path uses continuous-ACT/360 equivalence at the DF level: `DF_new = DF · exp(−δ · days / 360)`.
+  - All three produce a `ZeroCurve` with identical downstream behaviour; the constructor path differs only in how DFs are obtained. Ports for DB/API later.
 - **`FixingLoader`** *(ABC)* — `ExcelFixingLoader`, `DataFrameFixingLoader`.
 - **`TradeLoader`** *(ABC)* — `YamlTradeLoader`, `DataFrameTradeLoader`.
 
 **Input formats (production, only formats supported — legacy synthetic formats retired 2026-05-15):**
 
-- **Curve** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
+- **Curve — default (`market_environment` path)** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
+- **Curve — `--pillar-dates` (dated rate pillars)** — two no-header CSVs per val_date in `data/curves/`: `sofr_YYYY-MM-DD.csv` (discount) and `ff_YYYY-MM-DD.csv` (projection). Col A pillar date (ISO), col B zero rate (decimal). No ticker filtering; every non-empty row is a pillar.
+- **Curve — `--pillar-dates-df` (dated discount factors)** — `sofr_df_YYYY-MM-DD.csv` and `ff_df_YYYY-MM-DD.csv`. Same shape as `--pillar-dates` but col B is the DF (positive, typically ≤ 1). Bypasses `RateQuoting`.
 - **Fixings** — `data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv`; `ticker,date,rate` content identical to the old `fedfunds.csv` (no special handling). `ExcelFixingLoader` already auto-detects this layout.
 
 Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic_fixings.py`) now emit these production formats directly. Curve/fixing files normalize to the same in-memory `ZeroCurve` / `FixingHistory`, so nothing downstream of the loaders changed.
@@ -406,6 +411,24 @@ Tests live alongside the code in each block, not deferred.
 - Pure CLI, no interactive prompts. Stdout logging. Non-zero exit on error. Fail-fast input validation. (All required for future server deployment.)
 - Run manifest (`manifest_<val_date>.json`) records `git_sha`, input file hashes, trade count, timings — written from day 1.
 
+### CLI flags (both `price_portfolio.py` and `price_portfolio_batch.py`)
+
+- **Curve input mode** (mutually exclusive argparse group; default = `market_environment` path):
+  - `--pillar-dates` → `DatedCurveLoader` (rate-keyed dated pillars).
+  - `--pillar-dates-df` → `DatedDFCurveLoader` (DF-keyed dated pillars; bypasses `RateQuoting`).
+- **`-v` / `--verbose`** — toggles root logger level. Default `WARNING` (cloud-friendly: only warnings/errors hit stdout; `manifest.warnings[]` still records convention warnings, no-curve skips, matured-trade notices). `-v` switches to `INFO` (per-trade timings, run folder, "===== val_date X : run START =====" worker lines, etc.). Applied to the parent process and each per-date worker in batch.
+
+### Exit codes (both scripts)
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — all priced. `skipped(no-curve)` (weekend/holiday with no published curve) counts as success and does not page. |
+| `1` | Hard failure — uncaught exception, or a date errored entirely. |
+| `2` | CLI usage error — argparse default (bad/missing args, mutex violation). |
+| `3` | Partial — pricing completed but at least one trade errored (recorded in `manifest.errors[]`). |
+
+Codes are stable and intended for CI/CD branching (`retry on 3`, `page on 1`, `ignore 0`). POSIX-safe positive values in `0–125`; no negatives (Python wraps `−1` to `255`); avoid `126`/`127`/`128+N` (shell-reserved). Skipped dates intentionally do not change the exit code — silence (no run at all by the scheduled time) is what should page, monitored separately.
+
 ---
 
 ## Future: Server Deployment (TODO — not implementing now)
@@ -456,7 +479,9 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
    - `detail/<trade_id>.xlsx` per trade
    - `parquet/*.parquet`
    - `manifest_<val_date>.json`
-2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `valdate_/rundate_` folder per date plus `output/batch_<UTCstamp>.{log,json}`; non-zero exit only on real failures (`error`/`partial`) — dates with no published curve are reported as `skipped` (WARNING) and do not fail the run.
+2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `valdate_/rundate_` folder per date plus `output/batch_<UTCstamp>.{log,json}`; exit codes follow the standardized scheme (`0` ok/skipped, `1` hard error, `2` usage, `3` partial). Dates with no published curve are reported as `skipped` (WARNING) and stay at exit code `0`.
+2c. Curve-input alternates exercised: `--pillar-dates` (`sofr_<date>.csv` + `ff_<date>.csv`, rates) and `--pillar-dates-df` (`sofr_df_<date>.csv` + `ff_df_<date>.csv`, DFs) each price the same portfolio to numerically-equivalent DFs (verified by round-trip tests in `tests/test_dated_curve_loader.py` and `tests/test_dated_df_loader.py`).
+2d. `-v` toggles INFO progress vs the default WARNING-only output.
 3. Hand-check one swap:
    - `clean + accrued == dirty` to < 1e-8
    - Sum of fixed PV − sum of floating PV ≈ reported NPV (within sign convention)
