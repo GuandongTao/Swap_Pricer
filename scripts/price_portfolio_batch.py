@@ -42,9 +42,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
     p.add_argument("--max-workers", type=int, default=None, help="Parallel worker processes (default: auto)")
-    p.add_argument("--no-detail", action="store_true", help="Skip per-trade detail workbooks")
-    p.add_argument("--no-parquet", action="store_true", help="Skip parquet outputs")
-    p.add_argument("--debug", action="store_true", help="Write per-trade debug workbooks")
+    p.add_argument(
+        "--debug", action="store_true",
+        help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
+             "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
+    )
     curve_src = p.add_mutually_exclusive_group()
     curve_src.add_argument(
         "--pillar-dates", action="store_true",
@@ -95,8 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=args.data_dir,
         out_dir=args.out_dir,
         max_workers=args.max_workers,
-        write_detail=not args.no_detail,
-        write_parquet=not args.no_parquet,
+        write_detail=args.debug,
+        write_parquet=args.debug,
         write_debug=args.debug,
         pillar_dates=args.pillar_dates,
         pillar_dates_df=args.pillar_dates_df,

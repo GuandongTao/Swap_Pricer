@@ -24,9 +24,9 @@ import pandas as pd
 
 from .base import TradeDef, TradeLoader
 
-_DATE_FIELDS = {"start_date", "maturity_date"}
+_DATE_FIELDS = {"start_date", "maturity_date", "deal_date"}
 _FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
-_BOOL_FIELDS = {"pay_fixed"}
+_BOOL_FIELDS = {"pay_fixed", "intercompany"}
 _INT_FIELDS = {
     "fixed_payment_delay_bdays", "floating_payment_delay_bdays",
     "floating_reset_lag_bdays", "floating_lockout_bdays",

@@ -52,6 +52,5 @@ def test_pillar_dates_flag_routes_to_dated_loader_and_errors_on_missing_file(tmp
         "--data-dir", str(tmp_path),
         "--out-dir", str(tmp_path / "out"),
         "--pillar-dates",
-        "--no-detail", "--no-parquet",
     ])
     assert rc == 1

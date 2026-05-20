@@ -85,6 +85,26 @@ class TradeDef:
     floating_fixing_calendar_extras_file: str | None = None
     floating_payment_calendar_extras_file: str | None = None
 
+    # --- Production-output fields (sourced 1:1 from the trade row; not used by
+    # pricing). Every field is optional and defaults to blank: an omitted
+    # column in the CSV writes a blank cell in the prod CSV. The CME-branch
+    # logic on `current_counterparty` is an EXACT string match against
+    # "CME Clearing House"; anything else routes to the Bank/OTC-Bilateral
+    # branch. See _template.csv.sample for the full Bloomberg-to-output map.
+    quantum_deal_number: str = ""
+    oracle_entity_code: str = ""
+    notional_currency: str = ""
+    intercompany: bool = False
+    counterparty_name_quantum: str = ""
+    current_counterparty: str = ""
+    entity_name_quantum: str = ""
+    reporting_party: str = ""
+    counterparty_location: str = ""
+    deal_date: date | None = None       # trade date (NOT effective / start_date)
+    netting_id: str = ""
+    cash_flow_netting_allowed: str = ""
+    position_netting_allowed: str = ""
+
     meta: dict = field(default_factory=dict)
 
 

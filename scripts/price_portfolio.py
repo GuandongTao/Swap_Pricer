@@ -1,8 +1,16 @@
 """Portfolio pricer CLI.
 
 Usage:
+    # Default: ONLY the prod CSV (IRS Valuation<val_date>-00001.csv)
     python scripts/price_portfolio.py --val-date 2026-03-31
+
+    # Debug: prod CSV + portfolio workbook + per-trade detail + per-trade
+    #        debug + parquet (everything the pipeline can emit)
+    python scripts/price_portfolio.py --val-date 2026-03-31 --debug
+
+    # Alternate curve inputs
     python scripts/price_portfolio.py --val-date 2026-03-31 --pillar-dates -v
+    python scripts/price_portfolio.py --val-date 2026-03-31 --pillar-dates-df
 
 Exit codes:
     0  success (all priced; ``skipped(no-curve)`` counts as success)
@@ -36,9 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--val-date", required=True, help="ISO date, e.g. 2026-03-31")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
-    p.add_argument("--no-detail", action="store_true", help="Skip per-trade detail workbooks")
-    p.add_argument("--no-parquet", action="store_true", help="Skip parquet outputs")
-    p.add_argument("--debug", action="store_true", help="Write per-trade debug workbooks (intermediate frames)")
+    p.add_argument(
+        "--debug", action="store_true",
+        help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
+             "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
+    )
     curve_src = p.add_mutually_exclusive_group()
     curve_src.add_argument(
         "--pillar-dates", action="store_true",
@@ -85,12 +95,15 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         pf = Portfolio(curve_loader, fixing_loader, trade_loader)
+        # Default (no --debug): prod CSV only. --debug: everything.
         valuations, manifest = pf.run(
             val_date,
             out_dir=out_dir,
-            write_detail=not args.no_detail,
-            write_parquet=not args.no_parquet,
+            write_prod=True,
+            write_portfolio_xlsx=args.debug,
+            write_detail=args.debug,
             write_debug=args.debug,
+            write_parquet=args.debug,
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")
