@@ -64,7 +64,7 @@ def _run_one(
     # (child processes don't inherit the parent's logging config). Lines are
     # prefixed with the val_date so parallel workers stay attributable.
     _logging.basicConfig(
-        level=_logging.INFO if verbose else _logging.WARNING, stream=_sys.stdout,
+        level=_logging.INFO if verbose else _logging.ERROR, stream=_sys.stdout,
         format=f"%(asctime)s %(levelname)s [val={val_date}] %(message)s",
     )
     _wlog = _logging.getLogger(f"batch.{val_date}")

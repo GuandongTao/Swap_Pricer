@@ -59,11 +59,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "-v", "--verbose", action="store_true",
-        help="Show INFO-level progress in parent and workers. Default WARNING-only.",
+        help="Show INFO-level progress in parent and workers (incl. "
+             "no-curve skips, convention warnings, matured-trade notices). "
+             "Default is ERROR-only -- warnings remain in manifest.warnings[] "
+             "but stay off stdout (cloud-pipeline friendly).",
     )
     args = p.parse_args(argv)
 
-    level = logging.INFO if args.verbose else logging.WARNING
+    # Default is ERROR-only; -v upgrades to INFO. Warnings still land in
+    # each per-date manifest.warnings[] and the batch summary log.
+    level = logging.INFO if args.verbose else logging.ERROR
     logging.basicConfig(level=level, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("price_portfolio_batch")
 
@@ -125,4 +130,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Print the exit code unconditionally on the final stdout line so it is
+    # visible even at default ERROR-only logging. Argparse's internal
+    # SystemExit (bad/missing args) is captured too.
+    try:
+        _rc = main()
+    except SystemExit as _e:
+        _rc = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
+    print(f"exit_code={_rc}")
+    raise SystemExit(_rc)

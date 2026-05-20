@@ -534,7 +534,17 @@ Tests live alongside the code in each block, not deferred.
 - **Curve input mode** (mutually exclusive argparse group; default = `market_environment` path):
   - `--pillar-dates` → `DatedCurveLoader` (rate-keyed dated pillars).
   - `--pillar-dates-df` → `DatedDFCurveLoader` (DF-keyed dated pillars; bypasses `RateQuoting`).
-- **`-v` / `--verbose`** — toggles root logger level. Default `WARNING` (cloud-friendly: only warnings/errors hit stdout; `manifest.warnings[]` still records convention warnings, no-curve skips, matured-trade notices). `-v` switches to `INFO` (per-trade timings, run folder, "===== val_date X : run START =====" worker lines, etc.). Applied to the parent process and each per-date worker in batch.
+- **`-v` / `--verbose`** — toggles root logger level. **Default `ERROR`**
+  (cloud-friendly: only hard failures hit stdout; `manifest.warnings[]` still
+  records convention warnings, no-curve skips, and matured-trade notices so
+  the file record is complete). `-v` switches to `INFO` (per-trade timings,
+  run folder, "===== val_date X : run START =====" worker lines,
+  convention warnings, no-curve skip warnings, etc.). Applied to the parent
+  process and each per-date worker in batch.
+- **Exit code is always printed on the final stdout line**
+  (`exit_code=<n>`), regardless of `-v`, so a quiet ERROR-only cloud run
+  still surfaces it. Captures argparse's internal `SystemExit` too — a bad
+  or missing CLI argument still prints `exit_code=2`.
 
 ### Exit codes (both scripts)
 
