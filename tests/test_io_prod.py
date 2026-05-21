@@ -10,7 +10,7 @@ import pytest
 
 from swaps.io_prod import (
     CME_NAME, N_COLS, PROD_FIELDS, SOURCE_NAME, VERSION_STAMP,
-    _COL, _SUM_COLS, prod_filename, write_prod_csv,
+    _COL, _SUM_COLS, load_entity_rc, prod_filename, write_prod_csv,
 )
 from swaps.loaders.base import TradeDef
 from swaps.pricer import SwapValuation
@@ -218,6 +218,83 @@ def test_empty_portfolio_produces_header_field_footer_only(tmp_path):
     assert rows[0][0] == "H"
     assert rows[1] == PROD_FIELDS
     assert rows[2][0] == "T" and rows[2][1] == "0"
+
+
+# --- CCID (cols AU / AV) -----------------------------------------------------
+_ENTITY_RC = {"1000": "100008", "1001": "100058"}
+
+
+def test_ccid_asset_uses_192001(tmp_path):
+    td = _trade(oracle_entity_code="1000")
+    v = _valuation(dirty=1000.0)  # NPV > 0 -> Asset
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL,
+                       entity_rc=_ENTITY_RC)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == \
+        "1000-100008-192001-000000-0000-000000-000000-000000-0000"
+    assert row[_COL["PL/OCI CCID"]] == \
+        "1000-100008-465012-000000-0000-000000-000000-000000-0000"
+
+
+def test_ccid_liability_uses_392001(tmp_path):
+    td = _trade(oracle_entity_code="1000")
+    v = _valuation(dirty=-1000.0)  # NPV < 0 -> Liability
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL,
+                       entity_rc=_ENTITY_RC)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == \
+        "1000-100008-392001-000000-0000-000000-000000-000000-0000"
+    assert row[_COL["PL/OCI CCID"]] == \
+        "1000-100008-465012-000000-0000-000000-000000-000000-0000"
+
+
+def test_ccid_zero_npv_blanks_bs_but_fills_pl(tmp_path):
+    td = _trade(oracle_entity_code="1001")
+    v = _valuation(clean=0.0, accrued=0.0, dirty=0.0)
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL,
+                       entity_rc=_ENTITY_RC)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == ""
+    assert row[_COL["PL/OCI CCID"]] == \
+        "1001-100058-465012-000000-0000-000000-000000-000000-0000"
+
+
+def test_ccid_missing_entity_or_lookup_leaves_blanks(tmp_path):
+    # entity blank -> blanks
+    td_blank = _trade(oracle_entity_code="")
+    v = _valuation(dirty=1000.0)
+    p = write_prod_csv(tmp_path / "blank.csv", {td_blank.trade_id: td_blank}, [v], VAL,
+                       entity_rc=_ENTITY_RC)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == ""
+    assert row[_COL["PL/OCI CCID"]] == ""
+
+    # entity present but missing from lookup -> blanks
+    td_miss = _trade(oracle_entity_code="9999")
+    p = write_prod_csv(tmp_path / "miss.csv", {td_miss.trade_id: td_miss}, [v], VAL,
+                       entity_rc=_ENTITY_RC)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == ""
+    assert row[_COL["PL/OCI CCID"]] == ""
+
+    # entity_rc itself None (default) -> blanks
+    p = write_prod_csv(tmp_path / "none.csv", {td_miss.trade_id: td_miss}, [v], VAL)
+    row = _read(p)[2]
+    assert row[_COL["Balance Sheet CCID"]] == ""
+    assert row[_COL["PL/OCI CCID"]] == ""
+
+
+def test_load_entity_rc_reads_sample_report(tmp_path):
+    src = tmp_path / "Entity_Reference_Report.csv"
+    src.write_text(
+        "Entity_Code,Default RC\n1000,100008\n1001,100058\n",
+        encoding="utf-8",
+    )
+    assert load_entity_rc(src) == {"1000": "100008", "1001": "100058"}
+
+
+def test_load_entity_rc_missing_file_returns_empty(tmp_path):
+    assert load_entity_rc(tmp_path / "does_not_exist.csv") == {}
 
 
 # --- Sum-cols coverage sanity (lets the spec drift catch itself) ------------

@@ -323,7 +323,8 @@ auto-increment scheme).
 | Netting ID | AR | `td.netting_id` |
 | Cash Flow Netting Allowed | AS | `td.cash_flow_netting_allowed` |
 | Position Netting Allowed | AT | `td.position_netting_allowed` |
-| Balance Sheet CCID / PL-OCI CCID | AU–AV | always blank (pending KPMG instruction) |
+| Balance Sheet CCID | AU | 9-segment composite ID (see CCID section below); blank if entity lookup misses or NPV == 0 |
+| PL/OCI CCID | AV | 9-segment composite ID (Natural Account `465012` regardless of sign); blank if entity lookup misses |
 | Hedged Debt MTM | AW | `v.pv_fixed` (PV of fixed leg under SOFR DF — equates to the hedged-debt fair value) |
 
 **CME-branch rule**: an **exact** string equality
@@ -334,6 +335,35 @@ Cleared / Cash-Settled CCP). Anything else — including `"CME"`,
 routes to the Bank / OTC-Bilateral branch. This is deliberate: a fuzzy match
 would silently bucket typos into the wrong cleared status. The expected
 string is documented in `_template.csv.sample`.
+
+**CCID composition (cols AU / AV)** — per `CCID.xlsx`:
+
+```
+CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reserve1-Reserve2
+```
+
+9 dash-joined segments. Entity = `td.oracle_entity_code`. RC is looked up
+from the **Entity Reference Report** (`entity/Entity_Reference_Report.csv` by
+default; columns `Entity_Code, Default RC`). The trailing 6 segments are
+zero-padded defaults: `000000-0000-000000-000000-000000-0000`.
+
+Natural Account varies by CCID type and Asset/Liability sign:
+
+| CCID | NPV > 0 (Asset) | NPV < 0 (Liability) | NPV == 0 |
+|---|---|---|---|
+| **Balance Sheet** (AU) | `192001` | `392001` | blank (matches blank Asset_Liability Tag) |
+| **PL/OCI** (AV) | `465012` | `465012` | `465012` |
+
+If the entity code is blank or missing from the lookup table, **both** CCID
+fields are emitted blank — no half-built id ever leaves the writer. The
+lookup file path is overridable per-run via `--entity-rc <path>`; the file
+itself is optional (missing file → all CCID cells blank, with a warning).
+
+Example for `oracle_entity_code = "1000"`, RC `100008`, asset trade:
+```
+AU = 1000-100008-192001-000000-0000-000000-000000-000000-0000
+AV = 1000-100008-465012-000000-0000-000000-000000-000000-0000
+```
 
 **Footer sum specification** (drawn directly from `Output_Format.xlsx`,
 column letters cross-checked against the 49-field order):
@@ -534,6 +564,11 @@ Tests live alongside the code in each block, not deferred.
 - **Curve input mode** (mutually exclusive argparse group; default = `market_environment` path):
   - `--pillar-dates` → `DatedCurveLoader` (rate-keyed dated pillars).
   - `--pillar-dates-df` → `DatedDFCurveLoader` (DF-keyed dated pillars; bypasses `RateQuoting`).
+- **`--entity-rc <path>`** — Entity Reference Report CSV used to build the
+  Balance Sheet / PL CCID strings (cols AU / AV). Default
+  `entity/Entity_Reference_Report.csv`. File is optional: missing file → all
+  CCID cells emitted blank with a startup warning. Schema: header row
+  `Entity_Code,Default RC`.
 - **`-v` / `--verbose`** — toggles root logger level. **Default `ERROR`**
   (cloud-friendly: only hard failures hit stdout; `manifest.warnings[]` still
   records convention warnings, no-curve skips, and matured-trade notices so

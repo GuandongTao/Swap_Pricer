@@ -45,6 +45,7 @@ def _run_one(
     pillar_dates: bool = False,
     pillar_dates_df: bool = False,
     verbose: bool = False,
+    entity_rc_path: str | None = None,
 ) -> BatchResult:
     """Process-pool worker. Builds loaders *inside* the worker so nothing
     unpicklable (curves, loader objects) crosses the process boundary."""
@@ -52,6 +53,7 @@ def _run_one(
     import logging as _logging
     import sys as _sys
 
+    from swaps.io_prod import load_entity_rc
     from swaps.loaders import CombinedTradeLoader
     from swaps.loaders.csv_trades import CsvTradeLoader
     from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader
@@ -86,6 +88,7 @@ def _run_one(
                 CsvTradeLoader(dd / "trades"),
             ),
         )
+        entity_rc = load_entity_rc(entity_rc_path) if entity_rc_path else {}
         _, manifest = pf.run(
             val_date,
             out_dir=out_dir,
@@ -94,6 +97,7 @@ def _run_one(
             write_detail=write_detail,
             write_parquet=write_parquet,
             write_debug=write_debug,
+            entity_rc=entity_rc,
         )
         _wlog.info("===== val_date %s : run DONE (status=%s) =====",
                    val_date, manifest.status)
@@ -145,6 +149,7 @@ def run_batch(
     pillar_dates: bool = False,
     pillar_dates_df: bool = False,
     verbose: bool = False,
+    entity_rc_path: str | Path | None = None,
 ) -> list[BatchResult]:
     """Price ``val_dates`` in parallel. Returns one ``BatchResult`` per date,
     ordered by ``val_date``. Each date's outputs land in
@@ -155,6 +160,7 @@ def run_batch(
         raise ValueError("run_batch requires at least one valuation date")
     data_dir = str(Path(data_dir))
     out_dir = str(Path(out_dir))
+    entity_rc_path_str = str(Path(entity_rc_path)) if entity_rc_path else None
     results: list[BatchResult] = []
 
     _log.info(
@@ -167,6 +173,7 @@ def run_batch(
                 _run_one, d, data_dir, out_dir, fixing_file,
                 write_detail, write_parquet, write_debug,
                 pillar_dates, pillar_dates_df, verbose,
+                entity_rc_path_str,
             ): d
             for d in dates
         }

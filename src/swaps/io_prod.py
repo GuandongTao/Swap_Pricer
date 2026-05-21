@@ -21,6 +21,22 @@ Clearing House. The check is an **exact string equality** against
 ``"CME Clearing House"``; anything else (including ``"cme clearing house"``
 or ``"CME"``) routes to the Bank / OTC-Bilateral branch. This is intentional
 and documented in ``_template.csv.sample`` so users can't silently drift.
+
+CCID composition (cols AU / AV)
+================================
+``CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reserve1-Reserve2``
+(9 dash-joined segments, per ``CCID.xlsx``). Entity = ``td.oracle_entity_code``;
+RC is looked up from a separate Entity Reference Report (entity_code -> default
+RC). The remaining 6 trailing segments are zero-padded defaults.
+
+Natural Account varies by CCID type and Asset/Liability sign:
+
+* Balance Sheet CCID (AU):  ``192001`` if NPV > 0 (Asset), ``392001`` if NPV < 0
+  (Liability), blank if NPV == 0 (matches the blank ``Asset_Liability Tag``).
+* PL/OCI CCID (AV):         ``465012`` regardless of sign.
+
+If the entity_rc lookup is missing or the entity code is blank, both CCID
+fields are left blank (no guess) and the row is otherwise unaffected.
 """
 
 from __future__ import annotations
@@ -36,6 +52,40 @@ from .pricer import SwapValuation
 VERSION_STAMP = "00001"
 SOURCE_NAME = "KPMG"
 CME_NAME = "CME Clearing House"
+
+# CCID natural-account codes (from CCID.xlsx)
+NAT_ACCT_ASSET = "192001"
+NAT_ACCT_LIABILITY = "392001"
+NAT_ACCT_PL = "465012"
+# Trailing 6 segments of the CCID: SubAccount, InterEntity, InterCenter,
+# Product, Reserve1, Reserve2 (zero-padded defaults per CCID.xlsx).
+_CCID_TAIL = ("000000", "0000", "000000", "000000", "000000", "0000")
+
+
+def _ccid(entity: str, rc: str, natural_account: str) -> str:
+    """Build the 9-segment dash-joined CCID string."""
+    return "-".join([entity, rc, natural_account, *_CCID_TAIL])
+
+
+def load_entity_rc(path: str | Path) -> dict[str, str]:
+    """Read the Entity Reference Report CSV into ``{entity_code: rc}``.
+
+    Expected columns: ``Entity_Code`` and ``Default RC`` (header row required).
+    Both values are taken as strings and stripped; blank rows are skipped.
+    Missing file -> empty dict (CCID fields will be emitted blank).
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    out: dict[str, str] = {}
+    with p.open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            ec = (row.get("Entity_Code") or "").strip()
+            rc = (row.get("Default RC") or "").strip()
+            if ec and rc:
+                out[ec] = rc
+    return out
 
 # Field order MUST match Output_Format.xlsx exactly: column letters A..AW
 # (49 fields). The footer-sum column-letter mapping (G/H/I/J, Q/R, U/V/W,
@@ -131,7 +181,12 @@ def _fmt(v) -> str:
     return str(v)
 
 
-def _row_for(td: TradeDef, v: SwapValuation, val_date: date) -> list[str]:
+def _row_for(
+    td: TradeDef,
+    v: SwapValuation,
+    val_date: date,
+    entity_rc: dict[str, str] | None = None,
+) -> list[str]:
     is_cme = (td.current_counterparty == CME_NAME)
     npv = v.dirty
     da = npv if npv > 0 else None
@@ -146,6 +201,20 @@ def _row_for(td: TradeDef, v: SwapValuation, val_date: date) -> list[str]:
     sub_product2 = "OTC - Centralized (Principal)" if is_cme else "OTC - Bilateral"
     counterparty_type = "Financial Market Utility" if is_cme else "Bank"
     cme_indicator = "YES" if is_cme else "NO"
+
+    # CCIDs (AU/AV). Need entity code AND a hit in the entity_rc lookup table;
+    # otherwise leave blank rather than emit a half-built id.
+    bs_ccid = ""
+    pl_ccid = ""
+    entity = (td.oracle_entity_code or "").strip()
+    rc = (entity_rc or {}).get(entity, "") if entity else ""
+    if entity and rc:
+        if npv > 0:
+            bs_ccid = _ccid(entity, rc, NAT_ACCT_ASSET)
+        elif npv < 0:
+            bs_ccid = _ccid(entity, rc, NAT_ACCT_LIABILITY)
+        # NPV == 0: leave BS CCID blank (mirrors the blank Asset_Liability Tag)
+        pl_ccid = _ccid(entity, rc, NAT_ACCT_PL)
 
     cells: list[object | None] = [None] * N_COLS
     # Direct fills (positions match PROD_FIELDS exactly).
@@ -183,6 +252,8 @@ def _row_for(td: TradeDef, v: SwapValuation, val_date: date) -> list[str]:
     cells[_COL["Cash Flow Netting Allowed"]] = td.cash_flow_netting_allowed
     cells[_COL["Position Netting Allowed"]] = td.position_netting_allowed
     cells[_COL["Hedged Debt MTM"]] = v.pv_fixed
+    cells[_COL["Balance Sheet CCID"]] = bs_ccid
+    cells[_COL["PL/OCI CCID"]] = pl_ccid
     return [_fmt(c) for c in cells]
 
 
@@ -213,6 +284,7 @@ def write_prod_csv(
     trades_by_id: dict[str, TradeDef],
     valuations: list[SwapValuation],
     val_date: date,
+    entity_rc: dict[str, str] | None = None,
 ) -> Path:
     """Write the prod feed CSV.
 
@@ -242,7 +314,7 @@ def write_prod_csv(
                 maturity_date=v.meta.get("maturity_date", val_date),
                 fixed_frequency="1Y", fixed_daycount="ACT/360",
             )
-        rows.append(_row_for(td, v, val_date))
+        rows.append(_row_for(td, v, val_date, entity_rc=entity_rc))
     footer = _footer(rows, n_trades=len(rows))
 
     with out_path.open("w", encoding="utf-8", newline="") as fh:

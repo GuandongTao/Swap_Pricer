@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end", default=None, help="Range end (inclusive, ISO).")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
+    p.add_argument(
+        "--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
+        help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
+             "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
+    )
     p.add_argument("--max-workers", type=int, default=None, help="Parallel worker processes (default: auto)")
     p.add_argument(
         "--debug", action="store_true",
@@ -108,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         pillar_dates=args.pillar_dates,
         pillar_dates_df=args.pillar_dates_df,
         verbose=args.verbose,
+        entity_rc_path=args.entity_rc,
     )
 
     for r in results:

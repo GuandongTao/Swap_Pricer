@@ -90,7 +90,13 @@
 #
 #   --- Trade-reference fields (sourced 1:1 from this row) ---
 #   quantum_deal_number          Quantum Unique Trade ID
-#   oracle_entity_code           Oracle Entity Code
+#   oracle_entity_code           Oracle Entity Code. ALSO used to build the
+#                                  Balance Sheet CCID and PL/OCI CCID (cols
+#                                  AU/AV) by looking up the Default RC from
+#                                  entity/Entity_Reference_Report.csv. If this
+#                                  field is blank or the entity is not in the
+#                                  lookup table, both CCID cells are emitted
+#                                  blank (no half-built id is ever written).
 #   notional_currency            Notional currency of the trade (e.g. USD)
 #   intercompany                 true/false -> rendered as Yes/No in the output
 #                                  (same boolean parsing as pay_fixed)
@@ -125,8 +131,11 @@
 #   * Fields marked "Not Required" in the spec (Trade Reference Number,
 #     Internal Reference Number, Period Start/End/Payment dates, Pay_Rec
 #     Status, Component Type, Coupon FV, Intrinsic Value FV, Time Value FV,
-#     InternalFacing-StreetFacing, Counterparty Code, Balance Sheet CCID,
-#     PL/OCI CCID) are always written blank.
+#     InternalFacing-StreetFacing, Counterparty Code) are always written blank.
+#   * Balance Sheet CCID (AU) and PL/OCI CCID (AV) are NOT input fields --
+#     they are composed from oracle_entity_code + the Entity Reference Report
+#     lookup + the NPV-sign-driven natural account (Asset=192001 /
+#     Liability=392001 / PL=465012). See plan.md "CCID composition".
 #
 # Lines starting with # are ignored. Blank rows are ignored.
 trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,cash_flow_netting_allowed,position_netting_allowed

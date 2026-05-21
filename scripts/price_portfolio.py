@@ -31,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from swaps.io_prod import load_entity_rc  # noqa: E402
 from swaps.loaders import CombinedTradeLoader  # noqa: E402
 from swaps.loaders.csv_trades import CsvTradeLoader  # noqa: E402
 from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader  # noqa: E402
@@ -44,6 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--val-date", required=True, help="ISO date, e.g. 2026-03-31")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
+    p.add_argument(
+        "--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
+        help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
+             "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
+    )
     p.add_argument(
         "--debug", action="store_true",
         help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
@@ -97,6 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         CsvTradeLoader(data_dir / "trades"),
     )
 
+    entity_rc = load_entity_rc(args.entity_rc)
+    if not entity_rc:
+        log.warning("entity_rc lookup empty (path=%s) -> CCID fields will be blank", args.entity_rc)
+
     try:
         pf = Portfolio(curve_loader, fixing_loader, trade_loader)
         # Default (no --debug): prod CSV only. --debug: everything.
@@ -108,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             write_detail=args.debug,
             write_debug=args.debug,
             write_parquet=args.debug,
+            entity_rc=entity_rc,
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")

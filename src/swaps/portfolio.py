@@ -71,6 +71,7 @@ class Portfolio:
         write_debug: bool = False,
         write_portfolio_xlsx: bool = False,
         write_prod: bool = True,
+        entity_rc: dict[str, str] | None = None,
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -200,7 +201,7 @@ class Portfolio:
             prod_path = out_dir / prod_filename(val_date)
             _log.info("Writing prod CSV -> %s", prod_path)
             with _timed(timings, "write_prod_csv"):
-                write_prod_csv(prod_path, trades_by_id, valuations, val_date)
+                write_prod_csv(prod_path, trades_by_id, valuations, val_date, entity_rc=entity_rc)
             manifest.outputs["prod_csv"] = str(prod_path)
 
         if write_portfolio_xlsx:
