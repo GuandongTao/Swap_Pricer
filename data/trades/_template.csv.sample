@@ -127,9 +127,9 @@
 #   * Collateral Level = "Fully Collateralized"
 #   * Sub-Product2, Counterparty Type, QCCP / Cleared / Cash-Settled CCP
 #     indicators  <- branched off current_counterparty == "CME Clearing House"
-#   * DA / DL / Asset_Liability Tag  <- branched off the sign of NPV
+#   * DA / DL / Asset Liability Tag  <- branched off the sign of NPV
 #   * Fields marked "Not Required" in the spec (Trade Reference Number,
-#     Internal Reference Number, Period Start/End/Payment dates, Pay_Rec
+#     Internal Reference Number, Period Start/End/Payment dates, Pay Rec
 #     Status, Component Type, Coupon FV, Intrinsic Value FV, Time Value FV,
 #     InternalFacing-StreetFacing, Counterparty Code) are always written blank.
 #   * Balance Sheet CCID (AU) and PL/OCI CCID (AV) are NOT input fields --

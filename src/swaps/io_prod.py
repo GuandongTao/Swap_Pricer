@@ -32,7 +32,7 @@ RC). The remaining 6 trailing segments are zero-padded defaults.
 Natural Account varies by CCID type and Asset/Liability sign:
 
 * Balance Sheet CCID (AU):  ``192001`` if NPV > 0 (Asset), ``392001`` if NPV < 0
-  (Liability), blank if NPV == 0 (matches the blank ``Asset_Liability Tag``).
+  (Liability), blank if NPV == 0 (matches the blank ``Asset Liability Tag``).
 * PL/OCI CCID (AV):         ``465012`` regardless of sign.
 
 If the entity_rc lookup is missing or the entity code is blank, both CCID
@@ -109,7 +109,7 @@ PROD_FIELDS: list[str] = [
     "Maturity Date",                                # P   td.maturity_date
     "Notional 1 Amount",                            # Q   td.notional     SUM
     "Notional 1 Amount USD",                        # R   td.notional     SUM
-    "Pay_Rec Status",                               # S   blank
+    "Pay Rec Status",                               # S   blank
     "Component Type",                               # T   blank
     "Coupon FV (Future Value)",                     # U   blank           SUM (=0)
     "Intrinsic Value FV (Future Value)",            # V   blank           SUM (=0)
@@ -129,7 +129,7 @@ PROD_FIELDS: list[str] = [
     "HCL Type",                                     # AJ  "Interest Rate Swap"
     "DA",                                           # AK  npv if >0 else blank  SUM
     "DL",                                           # AL  npv if <0 else blank  SUM
-    "Asset_Liability Tag",                          # AM  Asset/Liability/blank
+    "Asset Liability Tag",                          # AM  Asset/Liability/blank
     "Qualifying Central Counterparty Indicator",    # AN  YES/NO
     "Cleared Transaction indicator",                # AO  YES/NO
     "Cash Settled CCP indicator",                   # AP  YES/NO
@@ -213,7 +213,7 @@ def _row_for(
             bs_ccid = _ccid(entity, rc, NAT_ACCT_ASSET)
         elif npv < 0:
             bs_ccid = _ccid(entity, rc, NAT_ACCT_LIABILITY)
-        # NPV == 0: leave BS CCID blank (mirrors the blank Asset_Liability Tag)
+        # NPV == 0: leave BS CCID blank (mirrors the blank Asset Liability Tag)
         pl_ccid = _ccid(entity, rc, NAT_ACCT_PL)
 
     cells: list[object | None] = [None] * N_COLS
@@ -243,7 +243,7 @@ def _row_for(
     cells[_COL["HCL Type"]] = "Interest Rate Swap"
     cells[_COL["DA"]] = da
     cells[_COL["DL"]] = dl
-    cells[_COL["Asset_Liability Tag"]] = al_tag
+    cells[_COL["Asset Liability Tag"]] = al_tag
     cells[_COL["Qualifying Central Counterparty Indicator"]] = cme_indicator
     cells[_COL["Cleared Transaction indicator"]] = cme_indicator
     cells[_COL["Cash Settled CCP indicator"]] = cme_indicator

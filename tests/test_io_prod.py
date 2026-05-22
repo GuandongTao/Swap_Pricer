@@ -155,7 +155,7 @@ def test_non_exact_cme_routes_to_bilateral(tmp_path, name):
     assert row[_COL["Qualifying Central Counterparty Indicator"]] == "NO"
 
 
-# --- DA / DL / Asset_Liability tag ------------------------------------------
+# --- DA / DL / Asset Liability tag ------------------------------------------
 def test_positive_npv_fills_da(tmp_path):
     td = _trade()
     v = _valuation(dirty=500.0)
@@ -163,7 +163,7 @@ def test_positive_npv_fills_da(tmp_path):
     row = _read(p)[2]
     assert float(row[_COL["DA"]]) == 500.0
     assert row[_COL["DL"]] == ""
-    assert row[_COL["Asset_Liability Tag"]] == "Asset"
+    assert row[_COL["Asset Liability Tag"]] == "Asset"
 
 
 def test_negative_npv_fills_dl(tmp_path):
@@ -173,7 +173,7 @@ def test_negative_npv_fills_dl(tmp_path):
     row = _read(p)[2]
     assert row[_COL["DA"]] == ""
     assert float(row[_COL["DL"]]) == -300.0
-    assert row[_COL["Asset_Liability Tag"]] == "Liability"
+    assert row[_COL["Asset Liability Tag"]] == "Liability"
 
 
 def test_zero_npv_leaves_da_dl_tag_blank(tmp_path):
@@ -182,7 +182,7 @@ def test_zero_npv_leaves_da_dl_tag_blank(tmp_path):
     p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL)
     row = _read(p)[2]
     assert row[_COL["DA"]] == "" and row[_COL["DL"]] == ""
-    assert row[_COL["Asset_Liability Tag"]] == ""
+    assert row[_COL["Asset Liability Tag"]] == ""
 
 
 # --- Footer sums -------------------------------------------------------------

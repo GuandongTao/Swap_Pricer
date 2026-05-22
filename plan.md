@@ -300,7 +300,7 @@ auto-increment scheme).
 | Maturity Date | P | `td.maturity_date` |
 | Notional 1 Amount | Q | `td.notional` |
 | Notional 1 Amount USD | R | `td.notional` (book is USD-only — same value) |
-| Pay_Rec Status / Component Type | S–T | always blank |
+| Pay Rec Status / Component Type | S–T | always blank |
 | Coupon FV / Intrinsic Value FV / Time Value FV | U–W | always blank (footer sums = 0) |
 | Intercompany Trade | X | `"Yes"`/`"No"` from `td.intercompany` (bool) |
 | Counterparty Name (Quantum) | Y | `td.counterparty_name_quantum` |
@@ -317,7 +317,7 @@ auto-increment scheme).
 | HCL Type | AJ | constant `"Interest Rate Swap"` |
 | DA | AK | `npv` if `npv > 0` else blank |
 | DL | AL | `npv` if `npv < 0` else blank |
-| Asset_Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
+| Asset Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
 | Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"YES"`, else `"NO"` |
 | Deal Date | AQ | `td.deal_date` (trade date — distinct from `start_date`) |
 | Netting ID | AR | `td.netting_id` |
@@ -351,7 +351,7 @@ Natural Account varies by CCID type and Asset/Liability sign:
 
 | CCID | NPV > 0 (Asset) | NPV < 0 (Liability) | NPV == 0 |
 |---|---|---|---|
-| **Balance Sheet** (AU) | `192001` | `392001` | blank (matches blank Asset_Liability Tag) |
+| **Balance Sheet** (AU) | `192001` | `392001` | blank (matches blank Asset Liability Tag) |
 | **PL/OCI** (AV) | `465012` | `465012` | `465012` |
 
 If the entity code is blank or missing from the lookup table, **both** CCID
