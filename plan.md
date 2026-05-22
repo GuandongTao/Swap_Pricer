@@ -318,7 +318,7 @@ auto-increment scheme).
 | DA | AK | `npv` if `npv > 0` else blank |
 | DL | AL | `npv` if `npv < 0` else blank |
 | Asset Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
-| Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"YES"`, else `"NO"` |
+| Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"Yes"`, else `"No"` |
 | Deal Date | AQ | `td.deal_date` (trade date — distinct from `start_date`) |
 | Netting ID | AR | `td.netting_id` |
 | Cash Flow Netting Allowed | AS | `td.cash_flow_netting_allowed` |

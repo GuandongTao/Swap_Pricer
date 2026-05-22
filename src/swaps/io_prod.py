@@ -200,7 +200,7 @@ def _row_for(
 
     sub_product2 = "OTC - Centralized (Principal)" if is_cme else "OTC - Bilateral"
     counterparty_type = "Financial Market Utility" if is_cme else "Bank"
-    cme_indicator = "YES" if is_cme else "NO"
+    cme_indicator = "Yes" if is_cme else "No"
 
     # CCIDs (AU/AV). Need entity code AND a hit in the entity_rc lookup table;
     # otherwise leave blank rather than emit a half-built id.

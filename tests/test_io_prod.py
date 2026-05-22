@@ -132,9 +132,9 @@ def test_cme_exact_match_routes_to_centralized(tmp_path):
     row = _read(p)[2]
     assert row[_COL["Sub-Product2"]] == "OTC - Centralized (Principal)"
     assert row[_COL["Counterparty Type"]] == "Financial Market Utility"
-    assert row[_COL["Qualifying Central Counterparty Indicator"]] == "YES"
-    assert row[_COL["Cleared Transaction indicator"]] == "YES"
-    assert row[_COL["Cash Settled CCP indicator"]] == "YES"
+    assert row[_COL["Qualifying Central Counterparty Indicator"]] == "Yes"
+    assert row[_COL["Cleared Transaction indicator"]] == "Yes"
+    assert row[_COL["Cash Settled CCP indicator"]] == "Yes"
 
 
 @pytest.mark.parametrize("name", [
@@ -152,7 +152,7 @@ def test_non_exact_cme_routes_to_bilateral(tmp_path, name):
     row = _read(p)[2]
     assert row[_COL["Sub-Product2"]] == "OTC - Bilateral"
     assert row[_COL["Counterparty Type"]] == "Bank"
-    assert row[_COL["Qualifying Central Counterparty Indicator"]] == "NO"
+    assert row[_COL["Qualifying Central Counterparty Indicator"]] == "No"
 
 
 # --- DA / DL / Asset Liability tag ------------------------------------------

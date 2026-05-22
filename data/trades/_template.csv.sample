@@ -90,7 +90,9 @@
 #
 #   --- Trade-reference fields (sourced 1:1 from this row) ---
 #   quantum_deal_number          Quantum Unique Trade ID
-#   oracle_entity_code           Oracle Entity Code. ALSO used to build the
+#   oracle_entity_code           Oracle Entity Code (4-digit, e.g. 1000) --
+#                                  must match an Entity_Code in the Entity
+#                                  Reference Report. ALSO used to build the
 #                                  Balance Sheet CCID and PL/OCI CCID (cols
 #                                  AU/AV) by looking up the Default RC from
 #                                  entity/Entity_Reference_Report.csv. If this
@@ -139,6 +141,6 @@
 #
 # Lines starting with # are ignored. Blank rows are ignored.
 trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,cash_flow_netting_allowed,position_netting_allowed
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,5Y pay-float bilateral bank trade,QD-100001,ORC-001,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Yes,Yes
-SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,10Y EOM cross-freq cleared trade,QD-100002,ORC-001,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Yes,Yes
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2Y intercompany backward roll,QD-100003,ORC-002,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Yes,No
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Yes,Yes
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Yes,Yes
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2Y intercompany backward roll,QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Yes,No
