@@ -130,12 +130,6 @@ def test_non_in_arrears_reset_is_hard_error():
         validate_trade(td)
 
 
-def test_eom_with_acc_and_pay_emits_warning():
-    # fixed adjust=acc_and_pay (default) + forward_eom -> Bloomberg-gray warning
-    warns = validate_trade(_td(fixed_roll_convention="forward_eom", fixed_adjust="acc_and_pay"))
-    assert any("Bloomberg locks" in w for w in warns)
-
-
 def test_clean_combo_no_warnings():
     warns = validate_trade(
         _td(

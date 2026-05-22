@@ -63,12 +63,6 @@ def validate_trade(td: TradeDef) -> list[str]:
         ("fixed", td.fixed_adjust, td.fixed_roll_convention, td.fixed_daycount),
         ("floating", td.floating_adjust, td.floating_roll_convention, td.floating_daycount),
     ):
-        if str(adjust).lower() == "acc_and_pay" and roll.endswith("eom"):
-            warnings.append(
-                f"{td.trade_id}: {leg} adjust=acc_and_pay with an EOM roll "
-                f"convention ({roll}) — Bloomberg locks this leg to "
-                f"adjust=pay; coupons may differ from a Bloomberg ticket."
-            )
         if str(adjust).lower() == "acc_and_pay" and str(dc) in _THIRTY_DC:
             warnings.append(
                 f"{td.trade_id}: {leg} adjust=acc_and_pay with a 30/360-family "
