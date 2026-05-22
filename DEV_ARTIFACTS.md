@@ -50,7 +50,6 @@ production run path.
 
 | Path | Purpose | Prod |
 |---|---|---|
-| `scripts/diagnose_ccid.py` | explains blank Balance Sheet / PL CCID output | exclude |
 | `scripts/diagnose_fixings.py` | explains why a present fixing row reads as missing | exclude |
 | `scripts/discount_factor_test.py` | discount-factor inspection / hand-check dump | exclude |
 | `scripts/generate_synthetic_curve.py` | generates synthetic curve test data | exclude |

@@ -89,12 +89,26 @@ def _blank(v) -> bool:
     )
 
 
+def _clean_str(v) -> str:
+    """Stringify a cell, dropping the spurious ``.0`` pandas adds to id columns.
+
+    When an integer-valued column (e.g. ``oracle_entity_code``) has a blank
+    cell anywhere, pandas promotes the whole column to ``float64``, so ``1000``
+    arrives as ``1000.0``. Identifier fields must stay literal so downstream
+    lookups (CCID's entity_rc table) match.
+    """
+    s = str(v).strip()
+    if s.endswith(".0") and s[:-2].lstrip("-").isdigit():
+        return s[:-2]
+    return s
+
+
 def _parse_row(row: dict) -> TradeDef:
     missing = _REQUIRED - {k for k, v in row.items() if not _blank(v)}
     if missing:
         raise ValueError(f"CSV row {row.get('trade_id')!r} missing required: {sorted(missing)}")
 
-    raw_id = str(row["trade_id"]).strip()
+    raw_id = _clean_str(row["trade_id"])
     meta: dict = {"id": raw_id, "_id_scheme": "amex_daily_irs"}
     desc = row.get("description")
     if not _blank(desc):
@@ -116,7 +130,7 @@ def _parse_row(row: dict) -> TradeDef:
         elif name in _DATELIST_FIELDS:
             kwargs[name] = _to_date_list(v)
         else:
-            kwargs[name] = str(v).strip()
+            kwargs[name] = _clean_str(v)
 
     # CSV trades follow the AMEX daily-IRS naming scheme: the trade_id column
     # carries ONLY the trailing unique id; Portfolio.run reconstructs the full

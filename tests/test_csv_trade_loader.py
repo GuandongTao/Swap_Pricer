@@ -71,6 +71,22 @@ def test_skip_blank_rows_and_comments(tmp_path):
     assert [t.trade_id for t in trades] == ["T1", "T2"]
 
 
+def test_int_id_columns_survive_pandas_float_coercion(tmp_path):
+    # A blank oracle_entity_code on one row makes pandas promote the whole
+    # column to float64 -> 1000 arrives as 1000.0. Identifier fields must
+    # stay literal so the CCID entity_rc lookup matches.
+    (tmp_path / "batch.csv").write_text(
+        "trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,"
+        "fixed_frequency,fixed_daycount,oracle_entity_code\n"
+        "9001,100,true,0.04,2026-06-15,2027-06-15,1Y,ACT/360,1000\n"
+        "9002,200,false,0.05,2026-06-15,2027-06-15,1Y,ACT/360,\n",
+        encoding="utf-8",
+    )
+    trades = {t.trade_id: t for t in CsvTradeLoader(tmp_path).load_all()}
+    assert set(trades) == {"9001", "9002"}
+    assert trades["9001"].oracle_entity_code == "1000"
+
+
 def test_underscore_prefixed_files_are_ignored(tmp_path):
     (tmp_path / "_template.csv").write_text(
         "trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount\n"
