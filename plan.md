@@ -276,7 +276,7 @@ auto-increment scheme).
 
 | Row | Cells | Contents |
 |---|---|---|
-| 1 (header) | 5 | `H` \| `<yyyymmdd val_date>` \| `IRS Valuation<val_date>-00001.csv` \| `00001` \| `KPMG` |
+| 1 (header) | 5 | `H` \| `<yyyymmdd run date — today>` \| `IRS Valuation<val_date>-00001.csv` \| `00001` \| `KPMG` |
 | 2 (field names) | 49 | column labels in exact spec order — see `PROD_FIELDS` in `io_prod.py` |
 | 3..N+2 (trades) | 49 | one row per priced valuation (matured trades still emitted with pricing = 0) |
 | N+3 (footer) | 49 | `T` \| `<n_trades>` \| blanks \| column-letter sums at G/H/I/J, Q/R, U/V/W, AK/AL, AW |

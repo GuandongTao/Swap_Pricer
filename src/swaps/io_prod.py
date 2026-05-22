@@ -2,7 +2,7 @@
 
 Layout (one file per run):
 
-    Row 1   5-cell HEADER:   H | <yyyymmdd val_date> | IRS Valuation<val_date>-00001.csv | 00001 | KPMG
+    Row 1   5-cell HEADER:   H | <yyyymmdd run date (today)> | IRS Valuation<val_date>-00001.csv | 00001 | KPMG
     Row 2   49 field-name column headers (see :data:`PROD_FIELDS`)
     Row 3.. one row per priced trade, 49 columns
     Last    FOOTER row: T | <n_trades> | blanks ... with column-letter sums at
@@ -296,7 +296,7 @@ def write_prod_csv(
 
     header_row = [
         "H",
-        val_date.strftime("%Y%m%d"),
+        date.today().strftime("%Y%m%d"),
         prod_filename(val_date),
         VERSION_STAMP,
         SOURCE_NAME,

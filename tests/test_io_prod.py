@@ -63,8 +63,11 @@ def test_layout_header_field_row_trade_row_footer(tmp_path):
     rows = _read(p)
     # 1 header + 1 field-name row + 1 trade row + 1 footer
     assert len(rows) == 4
-    # row 1: 5-cell header
-    assert rows[0] == ["H", "20260520", prod_filename(VAL), VERSION_STAMP, SOURCE_NAME]
+    # row 1: 5-cell header (col B = run date / today, not val date)
+    assert rows[0] == [
+        "H", date.today().strftime("%Y%m%d"), prod_filename(VAL),
+        VERSION_STAMP, SOURCE_NAME,
+    ]
     # row 2: 49 field headers in the spec order
     assert rows[1] == PROD_FIELDS
     assert len(rows[1]) == N_COLS == 49
