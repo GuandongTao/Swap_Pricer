@@ -92,6 +92,8 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         roll_convention=td.fixed_roll_convention,
         payment_delay_bdays=td.fixed_payment_delay_bdays,
         payment_calendar=fixed_pay_cal,
+        first_accrual_date=td.fixed_first_accrual_date,
+        last_accrual_date=td.fixed_last_accrual_date,
     )
     float_schedule = generate_schedule(
         effective_date=td.start_date,
@@ -104,6 +106,8 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         roll_convention=td.floating_roll_convention,
         payment_delay_bdays=td.floating_payment_delay_bdays,
         payment_calendar=float_pay_cal,
+        first_accrual_date=td.floating_first_accrual_date,
+        last_accrual_date=td.floating_last_accrual_date,
     )
 
     notional = ConstantNotional(td.notional)

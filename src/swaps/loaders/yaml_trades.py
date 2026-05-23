@@ -20,7 +20,11 @@ REQUIRED = {
     "start_date", "maturity_date", "fixed_frequency", "fixed_daycount",
 }
 
-_DATE_FIELDS = {"start_date", "maturity_date"}
+_DATE_FIELDS = {
+    "start_date", "maturity_date",
+    "fixed_first_accrual_date", "fixed_last_accrual_date",
+    "floating_first_accrual_date", "floating_last_accrual_date",
+}
 _FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
 _BOOL_FIELDS = {"pay_fixed"}
 _INT_FIELDS = {
