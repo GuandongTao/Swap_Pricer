@@ -81,6 +81,7 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
     float_bda = td.floating_bus_day_adj
     float_freq = td.floating_frequency or td.fixed_frequency
 
+    fixed_sched_warnings: list[str] = []
     fixed_schedule = generate_schedule(
         effective_date=td.start_date,
         termination_date=td.maturity_date,
@@ -93,7 +94,9 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         payment_delay_bdays=td.fixed_payment_delay_bdays,
         payment_calendar=fixed_pay_cal,
         first_period_accrual_end_date=td.fixed_first_period_accrual_end_date,
+        schedule_warnings=fixed_sched_warnings,
     )
+    float_sched_warnings: list[str] = []
     float_schedule = generate_schedule(
         effective_date=td.start_date,
         termination_date=td.maturity_date,
@@ -106,7 +109,12 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         payment_delay_bdays=td.floating_payment_delay_bdays,
         payment_calendar=float_pay_cal,
         first_period_accrual_end_date=td.floating_first_period_accrual_end_date,
+        schedule_warnings=float_sched_warnings,
     )
+    # Promote schedule-level merges into the trade's warning list so the
+    # Portfolio runner surfaces them in manifest.warnings.
+    convention_warnings += [f"{td.trade_id} (fixed leg schedule): {w}" for w in fixed_sched_warnings]
+    convention_warnings += [f"{td.trade_id} (floating leg schedule): {w}" for w in float_sched_warnings]
 
     notional = ConstantNotional(td.notional)
     fixed = FixedLeg(

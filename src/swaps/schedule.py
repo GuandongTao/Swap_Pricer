@@ -155,6 +155,7 @@ def generate_schedule(
     payment_delay_bdays: int = 0,
     payment_calendar: USCalendar | None = None,
     first_period_accrual_end_date: date | None = None,
+    schedule_warnings: list[str] | None = None,
 ) -> list[AccrualPeriod]:
     """Generate accrual periods from `effective_date` to `termination_date`.
 
@@ -163,22 +164,58 @@ def generate_schedule(
     (including the terminal/maturity date) by `bus_day_adj`. The payment date
     is re-based on the **unadjusted** period end + `payment_delay_bdays`
     business days on `payment_calendar`, then rolled by `pay_date_adj`.
+
+    If two adjacent boundaries adjust to the same business day (typically a
+    tiny stub rolled onto its neighbor by a holiday/weekend), the inner
+    boundary is dropped so the resulting period has positive length. The
+    endpoints (effective and termination) are always preserved. A descriptive
+    string is appended to ``schedule_warnings`` (when provided) for each merge.
     """
     if termination_date <= effective_date:
         raise ValueError(f"termination_date {termination_date} must be > effective_date {effective_date}")
     step = parse_frequency(frequency)
     pay_cal = payment_calendar or calendar
 
-    unadjusted = _generate_unadjusted(
+    unadjusted = list(_generate_unadjusted(
         effective_date, termination_date, step, roll_convention,
         first_period_accrual_end_date=first_period_accrual_end_date,
-    )
+    ))
 
     # Effective date rolls under eff_date_adj; remaining boundaries (incl.
     # maturity) under bus_day_adj.
     adjusted = [calendar.roll(unadjusted[0], eff_date_adj)] + [
         calendar.roll(d, bus_day_adj) for d in unadjusted[1:]
     ]
+
+    # Post-roll dedup: collapse adjacent boundaries that adjusted to the same
+    # business day. Drop the interior one (endpoints survive). If a collision
+    # happens between the only two boundaries left, the trade is degenerate
+    # top-to-bottom and we raise rather than emit an empty schedule.
+    i = 0
+    while i < len(adjusted) - 1:
+        if adjusted[i] != adjusted[i + 1]:
+            i += 1
+            continue
+        last_idx = len(adjusted) - 1
+        if i == 0 and i + 1 == last_idx:
+            raise ValueError(
+                f"effective_date {effective_date} and termination_date "
+                f"{termination_date} both adjust to {adjusted[0]}; no periods "
+                f"can be generated. Choose dates further apart or change "
+                f"eff_date_adj / bus_day_adj."
+            )
+        # If i+1 is the termination endpoint, drop the inner one (i). Else
+        # drop i+1 so we keep moving forward and never lose the termination.
+        drop_idx = i if i + 1 == last_idx else i + 1
+        if schedule_warnings is not None:
+            schedule_warnings.append(
+                f"0-day adjusted period merged: unadjusted boundary "
+                f"{unadjusted[drop_idx]} adjusted onto its neighbor "
+                f"{adjusted[drop_idx]}; the {drop_idx}-th boundary was dropped."
+            )
+        del unadjusted[drop_idx]
+        del adjusted[drop_idx]
+        # don't advance i — re-check in case of cascading collapses
 
     periods: list[AccrualPeriod] = []
     for i in range(len(unadjusted) - 1):

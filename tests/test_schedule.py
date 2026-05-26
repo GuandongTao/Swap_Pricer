@@ -122,6 +122,45 @@ def test_anchor_outside_trade_range_raises():
         )
 
 
+def test_anchor_tiny_back_stub_collides_on_holiday_is_merged():
+    # Reproduces trade 19652363: anchor on 15th, maturity on 16th -> 1-day
+    # back stub at 2027-02-15 -> 2027-02-16, but 2027-02-15 is Presidents Day
+    # so it rolls onto 2027-02-16 (= maturity) under MFollowing. The 0-day
+    # period must be merged into the previous one.
+    warnings: list[str] = []
+    periods = generate_schedule(
+        effective_date=date(2024, 2, 16),
+        termination_date=date(2027, 2, 16),
+        frequency="3M",
+        calendar=NY_FED,
+        bus_day_adj="ModifiedFollowing",
+        first_period_accrual_end_date=date(2024, 5, 15),
+        schedule_warnings=warnings,
+    )
+    # No zero-length periods survive
+    assert all((p.end - p.start).days > 0 for p in periods)
+    # Last period extends all the way to the (adjusted) maturity
+    assert periods[-1].end == date(2027, 2, 16)
+    # Exactly one merge happened and was reported
+    assert len(warnings) == 1
+    assert "merged" in warnings[0].lower()
+
+
+def test_effective_and_maturity_collapse_to_same_day_raises():
+    # Pathological: effective Saturday rolls forward, maturity Sunday rolls
+    # backward to the same Monday under different conventions -> no schedule
+    # possible. This is contrived but the guard exists to surface it cleanly.
+    with pytest.raises(ValueError, match="no periods can be generated"):
+        generate_schedule(
+            effective_date=date(2026, 5, 30),    # Sat
+            termination_date=date(2026, 5, 31),  # Sun, before any Monday
+            frequency="3M",
+            calendar=NY_FED,
+            eff_date_adj="Following",
+            bus_day_adj="Following",
+        )
+
+
 def test_short_front_stub():
     # Backward generation (anchor = maturity) -> a short front stub appears
     periods = generate_schedule(
