@@ -63,73 +63,63 @@ def _generate_unadjusted(
     termination_date: date,
     step: relativedelta,
     roll_convention: RollConvention,
-    first_accrual_date: date | None = None,
-    last_accrual_date: date | None = None,
+    first_period_accrual_end_date: date | None = None,
 ) -> list[date]:
     """Unadjusted period boundaries incl. effective & termination endpoints.
 
     ``forward*``  : generate from the effective date forward, stub at the back,
                     anchor = effective date.
     ``backward*`` : generate from maturity backward, stub at the front,
-                    anchor = maturity (legacy behaviour).
+                    anchor = maturity.
     ``*_eom``     : if the anchor is its month's last day, snap every interior
                     boundary to month-end (endpoints stay as given).
 
-    BBG-style schedule anchor overrides (mutually exclusive):
+    BBG "First Payment Date" override: ``first_period_accrual_end_date`` is
+    the end of accrual period 1 (= start of period 2). When set:
 
-    ``first_accrual_date`` : forces a forward roll anchored at this date.
-        Period 1 is ``effective_date -> first_accrual_date`` (a short front
-        stub) and regular periods are generated forward at ``step`` from the
-        anchor. Any leftover at the back is absorbed as a back stub at
-        ``termination_date``.
-
-    ``last_accrual_date``  : forces a backward roll anchored at this date.
-        The final period is ``last_accrual_date -> termination_date`` (a
-        short back stub) and regular periods are generated backward at
-        ``step`` from the anchor. Any leftover at the front is absorbed as a
-        front stub at ``effective_date``.
-
-    Override semantics: when an override is supplied, ``roll_convention``'s
-    direction component is ignored (the override dictates direction); the
-    ``*_eom`` snapping still applies when the anchor lands on a month-end.
+      * Period 1 unadjusted = ``effective_date -> anchor`` (short front stub).
+      * Subsequent unadjusted ends = ``anchor + k * step`` for k=1,2,... using
+        strict calendar-day arithmetic (no month-end snapping, regardless of
+        ``roll_convention``'s ``_eom`` suffix). 4/30 anchor -> 7/30, 10/30,
+        1/30, 4/30 — never February-month-end.
+      * Roll continues until the next stepped date would meet or exceed
+        ``termination_date``; the last boundary is ``termination_date``
+        (back stub absorbed at the end).
+      * ``roll_convention`` is effectively ignored — the anchor dictates both
+        direction (forward) and roll day.
     """
     if roll_convention not in _VALID_ROLL_CONVENTION:
         raise ValueError(
             f"roll_convention must be one of {sorted(_VALID_ROLL_CONVENTION)}; "
             f"got {roll_convention!r}"
         )
-    if first_accrual_date is not None and last_accrual_date is not None:
-        raise ValueError(
-            "Specify at most one of first_accrual_date / last_accrual_date "
-            "(over-constrained schedule)."
-        )
 
-    if first_accrual_date is not None:
-        if not (effective_date < first_accrual_date < termination_date):
+    if first_period_accrual_end_date is not None:
+        anchor = first_period_accrual_end_date
+        if not (effective_date < anchor < termination_date):
             raise ValueError(
-                f"first_accrual_date {first_accrual_date} must lie strictly "
+                f"first_period_accrual_end_date {anchor} must lie strictly "
                 f"between effective_date {effective_date} and "
                 f"termination_date {termination_date}."
             )
-        backward = False
-        anchor = first_accrual_date
-    elif last_accrual_date is not None:
-        if not (effective_date < last_accrual_date < termination_date):
-            raise ValueError(
-                f"last_accrual_date {last_accrual_date} must lie strictly "
-                f"between effective_date {effective_date} and "
-                f"termination_date {termination_date}."
-            )
-        backward = True
-        anchor = last_accrual_date
-    else:
-        backward = roll_convention.startswith("backward")
-        anchor = termination_date if backward else effective_date
+        # Anchor overrides roll_convention entirely: forward roll, strict
+        # calendar-day stepping (no EOM snapping even if anchor is month-end).
+        interior: list[date] = [anchor]
+        k = 1
+        while True:
+            d = anchor + k * step
+            if d >= termination_date:
+                break
+            interior.append(d)
+            k += 1
+        return [effective_date, *interior, termination_date]
+
+    backward = roll_convention.startswith("backward")
+    anchor = termination_date if backward else effective_date
     eom = roll_convention.endswith("eom") and _is_month_end(anchor)
 
-    interior: list[date] = []
+    interior = []
     if backward:
-        # Roll backward from the anchor at frequency, stopping at effective_date.
         k = 1
         while True:
             d = anchor - k * step
@@ -140,15 +130,7 @@ def _generate_unadjusted(
             interior.append(d)
             k += 1
         interior.reverse()
-        # last_accrual_date override: the anchor itself is a boundary (between
-        # the final regular period and the back stub running to termination).
-        if last_accrual_date is not None:
-            interior.append(last_accrual_date)
     else:
-        # first_accrual_date override: the anchor itself is a boundary (between
-        # the front stub from effective_date and the first regular period).
-        if first_accrual_date is not None:
-            interior.append(first_accrual_date)
         k = 1
         while True:
             d = anchor + k * step
@@ -172,8 +154,7 @@ def generate_schedule(
     roll_convention: RollConvention = "forward_eom",
     payment_delay_bdays: int = 0,
     payment_calendar: USCalendar | None = None,
-    first_accrual_date: date | None = None,
-    last_accrual_date: date | None = None,
+    first_period_accrual_end_date: date | None = None,
 ) -> list[AccrualPeriod]:
     """Generate accrual periods from `effective_date` to `termination_date`.
 
@@ -190,8 +171,7 @@ def generate_schedule(
 
     unadjusted = _generate_unadjusted(
         effective_date, termination_date, step, roll_convention,
-        first_accrual_date=first_accrual_date,
-        last_accrual_date=last_accrual_date,
+        first_period_accrual_end_date=first_period_accrual_end_date,
     )
 
     # Effective date rolls under eff_date_adj; remaining boundaries (incl.

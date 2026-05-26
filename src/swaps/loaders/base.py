@@ -59,14 +59,16 @@ class TradeDef:
     fixed_payment_calendar_extras: list[date] = field(default_factory=list)
     fixed_calculation_calendar_extras_file: str | None = None
     fixed_payment_calendar_extras_file: str | None = None
-    # Schedule anchor overrides (BBG-style). At most one per leg; if set,
-    # interior coupon dates are anchored at this date instead of effective
-    # date / maturity. first_accrual_date forces forward roll from the anchor
-    # (front stub between effective_date and the anchor is preserved as a
-    # short period). last_accrual_date forces backward roll from the anchor
-    # (back stub between the anchor and maturity is preserved).
-    fixed_first_accrual_date: date | None = None
-    fixed_last_accrual_date: date | None = None
+    # BBG "First Payment Date" override: the end of accrual period 1 (start of
+    # period 2). When set, subsequent unadjusted accrual ends are stepped
+    # forward by `fixed_frequency` from this anchor in strict calendar-day
+    # arithmetic (4/30 -> 7/30 -> 10/30 -> 1/30, never snapping to month-end).
+    # Period 1 is the short front stub effective_date -> anchor; later
+    # boundaries are bus-day-adjusted independently. When this is set, the
+    # leg's `roll_convention` direction and EOM bits are ignored (the anchor
+    # dictates them); other conventions (calendars, bus_day_adj, etc.) still
+    # apply normally. Must lie strictly between start_date and maturity_date.
+    fixed_first_period_accrual_end_date: date | None = None
 
     # --- Floating leg conventions (per-leg) ---
     # Blank floating_frequency -> fixed_frequency (standard OIS: shared periods).
@@ -92,9 +94,8 @@ class TradeDef:
     floating_calculation_calendar_extras_file: str | None = None
     floating_fixing_calendar_extras_file: str | None = None
     floating_payment_calendar_extras_file: str | None = None
-    # Schedule anchor overrides (see fixed_first_accrual_date for semantics).
-    floating_first_accrual_date: date | None = None
-    floating_last_accrual_date: date | None = None
+    # BBG "First Payment Date" override (see fixed_first_period_accrual_end_date).
+    floating_first_period_accrual_end_date: date | None = None
 
     # --- Production-output fields (sourced 1:1 from the trade row; not used by
     # pricing). Every field is optional and defaults to blank: an omitted

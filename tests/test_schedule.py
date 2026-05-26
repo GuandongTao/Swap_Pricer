@@ -63,18 +63,18 @@ def test_payment_delay_applied():
         assert p.payment_date == NY_FED.add_business_days(p.end, 2)
 
 
-# --- Schedule anchor overrides (first_accrual_date / last_accrual_date) ------
-def test_first_accrual_date_anchors_forward_with_front_stub():
+# --- BBG First Payment Date override (first_period_accrual_end_date) --------
+def test_first_period_accrual_end_date_anchors_forward_with_front_stub():
     # Effective 2026-04-02, maturity 2031-04-02, semi-annual.
-    # Anchor at 2026-04-25 -> period 1 is the short front stub 2026-04-02 -> 2026-04-25,
-    # then regular semi-annual periods on the 25th of Apr/Oct, ending at maturity.
+    # Anchor 2026-04-25 -> period 1 is short front stub 2026-04-02 -> 2026-04-25;
+    # later unadjusted ends step by 6M from the anchor (25th of Apr/Oct).
     periods = generate_schedule(
         effective_date=date(2026, 4, 2),
         termination_date=date(2031, 4, 2),
         frequency="6M",
         calendar=NY_FED,
         roll_convention="forward",
-        first_accrual_date=date(2026, 4, 25),
+        first_period_accrual_end_date=date(2026, 4, 25),
     )
     assert periods[0].unadjusted_start == date(2026, 4, 2)
     assert periods[0].unadjusted_end == date(2026, 4, 25)
@@ -85,37 +85,30 @@ def test_first_accrual_date_anchors_forward_with_front_stub():
     assert periods[-1].unadjusted_end == date(2031, 4, 2)
 
 
-def test_last_accrual_date_anchors_backward_with_back_stub():
-    # Effective 2026-04-02, maturity 2031-04-02, semi-annual.
-    # Anchor at 2030-10-25 -> last period is 2030-10-25 -> 2031-04-02 (back stub),
-    # everything else rolls backward at 6M from the anchor.
+def test_anchor_overrides_eom_strict_calendar_day():
+    # Anchor on 4/30 with quarterly frequency and roll_convention="forward_eom":
+    # subsequent unadjusted ends are 7/30, 10/30, 1/30, 4/30, ... NEVER 2/28
+    # or 2/29 (EOM is overridden by the anchor per design).
     periods = generate_schedule(
-        effective_date=date(2026, 4, 2),
-        termination_date=date(2031, 4, 2),
-        frequency="6M",
+        effective_date=date(2026, 1, 15),
+        termination_date=date(2028, 1, 15),
+        frequency="3M",
         calendar=NY_FED,
-        roll_convention="backward",
-        last_accrual_date=date(2030, 10, 25),
+        roll_convention="forward_eom",
+        first_period_accrual_end_date=date(2026, 4, 30),
     )
-    assert periods[-1].unadjusted_start == date(2030, 10, 25)
-    assert periods[-1].unadjusted_end == date(2031, 4, 2)
-    assert periods[-2].unadjusted_start == date(2030, 4, 25)
-    assert periods[-2].unadjusted_end == date(2030, 10, 25)
-    interior_starts = {p.unadjusted_start.day for p in periods[1:]}
-    assert interior_starts == {25}
-    assert periods[0].unadjusted_start == date(2026, 4, 2)
-
-
-def test_both_anchors_set_raises():
-    with pytest.raises(ValueError, match="at most one"):
-        generate_schedule(
-            effective_date=date(2026, 4, 2),
-            termination_date=date(2031, 4, 2),
-            frequency="6M",
-            calendar=NY_FED,
-            first_accrual_date=date(2026, 4, 25),
-            last_accrual_date=date(2030, 10, 25),
-        )
+    interior_ends = [p.unadjusted_end for p in periods[:-1]]
+    expected = [
+        date(2026, 4, 30),
+        date(2026, 7, 30),
+        date(2026, 10, 30),
+        date(2027, 1, 30),
+        date(2027, 4, 30),
+        date(2027, 7, 30),
+        date(2027, 10, 30),
+    ]
+    assert interior_ends == expected
+    assert periods[-1].unadjusted_end == date(2028, 1, 15)
 
 
 def test_anchor_outside_trade_range_raises():
@@ -125,7 +118,7 @@ def test_anchor_outside_trade_range_raises():
             termination_date=date(2031, 4, 2),
             frequency="6M",
             calendar=NY_FED,
-            first_accrual_date=date(2031, 5, 1),
+            first_period_accrual_end_date=date(2031, 5, 1),
         )
 
 

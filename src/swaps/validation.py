@@ -43,23 +43,18 @@ def validate_trade(td: TradeDef) -> list[str]:
             f"{td.trade_id}: maturity_date {td.maturity_date} must be > start_date {td.start_date}"
         )
 
-    # Schedule anchor overrides: at most one per leg, and the anchor must lie
-    # strictly inside (start_date, maturity_date).
-    for leg, fa, la in (
-        ("fixed", td.fixed_first_accrual_date, td.fixed_last_accrual_date),
-        ("floating", td.floating_first_accrual_date, td.floating_last_accrual_date),
+    # BBG "First Payment Date" override: anchor must lie strictly inside
+    # (start_date, maturity_date).
+    for leg, anchor in (
+        ("fixed", td.fixed_first_period_accrual_end_date),
+        ("floating", td.floating_first_period_accrual_end_date),
     ):
-        if fa is not None and la is not None:
+        if anchor is not None and not (td.start_date < anchor < td.maturity_date):
             raise ValueError(
-                f"{td.trade_id}: cannot set both {leg}_first_accrual_date and "
-                f"{leg}_last_accrual_date (over-constrained schedule)."
+                f"{td.trade_id}: {leg}_first_period_accrual_end_date {anchor} "
+                f"must lie strictly between start_date {td.start_date} and "
+                f"maturity_date {td.maturity_date}."
             )
-        for label, d in ((f"{leg}_first_accrual_date", fa), (f"{leg}_last_accrual_date", la)):
-            if d is not None and not (td.start_date < d < td.maturity_date):
-                raise ValueError(
-                    f"{td.trade_id}: {label} {d} must lie strictly between "
-                    f"start_date {td.start_date} and maturity_date {td.maturity_date}."
-                )
 
     meta = td.meta or {}
     for k in _RESET_KEYS:

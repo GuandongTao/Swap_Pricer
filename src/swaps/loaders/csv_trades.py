@@ -26,8 +26,8 @@ from .base import TradeDef, TradeLoader
 
 _DATE_FIELDS = {
     "start_date", "maturity_date", "deal_date",
-    "fixed_first_accrual_date", "fixed_last_accrual_date",
-    "floating_first_accrual_date", "floating_last_accrual_date",
+    "fixed_first_period_accrual_end_date",
+    "floating_first_period_accrual_end_date",
 }
 _FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
 _BOOL_FIELDS = {"pay_fixed", "intercompany"}
