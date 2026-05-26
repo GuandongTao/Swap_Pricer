@@ -37,6 +37,16 @@
 #                               start = -notional at start_date; end = +notional at final pay
 #   fixed_calculation_calendar   NY_FED (only one registered); blank => NY_FED
 #   fixed_payment_calendar       NY_FED; blank => fixed_calculation_calendar (BBG-derived)
+#   fixed_first_period_accrual_end_date   ISO date | optional. BBG "First Payment Date"
+#                               override: the END of accrual period 1 (= start of period 2).
+#                               Subsequent unadjusted accrual ends step forward by
+#                               fixed_frequency from this date in strict calendar-day
+#                               arithmetic (4/30 -> 7/30 -> 10/30 -> 1/30; never snapping
+#                               to month-end). Must lie strictly between start_date and
+#                               maturity_date. When set fixed_roll_convention is ignored
+#                               (anchor dictates direction = forward and roll day);
+#                               fixed_bus_day_adj still adjusts each boundary independently.
+#                               Blank => default schedule (no anchor).
 #
 #   --- Floating leg conventions (optional) ---
 #   floating_frequency        1Y/6M/3M/1M/1W/1D; blank => fixed_frequency (standard OIS)
@@ -56,6 +66,11 @@
 #   floating_calculation_calendar  NY_FED; blank => NY_FED
 #   floating_fixing_calendar       NY_FED | the reset/fixing calendar; blank => NY_FED
 #   floating_payment_calendar      NY_FED; blank => floating_calculation_calendar (BBG-derived)
+#   floating_first_period_accrual_end_date  ISO date | optional. Same semantics as
+#                               fixed_first_period_accrual_end_date but for the floating
+#                               leg. The two legs are independent: set one without the
+#                               other to match a BBG ticket where only one leg uses the
+#                               First Payment Date override.
 #
 #   description               free text (optional)
 #
@@ -70,11 +85,15 @@
 # BLOOMBERG PARITY: leave *_pay_date_adj / *_payment_calendar /
 #   floating_rst_bus_day_adj / floating_reset_lag_bdays blank and the row
 #   reproduces a Bloomberg ticket exactly (Bloomberg derives them the same way).
+#   For tickets that use BBG's "First Payment Date" override fill in
+#   fixed_first_period_accrual_end_date and/or floating_first_period_accrual_end_date
+#   with the same ISO date(s) shown on the ticket; leave blank otherwise.
 #
 # VALIDATION: invalid roll_convention or adjust; maturity<=start; an
-#   unregistered calendar; or an unsupported reset/payment type => HARD ERROR
-#   (row rejected). adjust=acc_and_pay with an EOM roll or a 30/360 day-count
-#   => WARNING only (still prices; logged to manifest.warnings).
+#   unregistered calendar; an unsupported reset/payment type; or a
+#   *_first_period_accrual_end_date outside (start_date maturity_date) => HARD
+#   ERROR (row rejected). adjust=acc_and_pay with an EOM roll or a 30/360
+#   day-count => WARNING only (still prices; logged to manifest.warnings).
 #
 # === SECTION 2: PRODUCTION-OUTPUT REFERENCE FIELDS ===
 #
@@ -140,7 +159,7 @@
 #     Liability=392001 / PL=465012). See plan.md "CCID composition".
 #
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,cash_flow_netting_allowed,position_netting_allowed
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Yes,Yes
-SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Yes,Yes
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2Y intercompany backward roll,QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Yes,No
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,cash_flow_netting_allowed,position_netting_allowed
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Yes,Yes
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Yes,Yes
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Yes,No
