@@ -33,12 +33,13 @@ def _v(trade_id, dirty):
     )
 
 
-def _t(trade_id, nid):
+def _t(trade_id, nid, current_counterparty="JP Morgan Chase Bank NA"):
     return TradeDef(
         trade_id=trade_id, notional=1_000_000.0, pay_fixed=False, fixed_rate=0.05,
         start_date=date(2026, 1, 1), maturity_date=date(2031, 1, 1),
         fixed_frequency="1Y", fixed_daycount="ACT/360",
         netting_id=nid, oracle_entity_code="1000",
+        current_counterparty=current_counterparty,
     )
 
 
@@ -134,20 +135,47 @@ def test_ccids_use_netting_entity_and_192005_392004(tmp_path):
 
 
 def test_cme_routes_counterparty_type_to_fmu(tmp_path):
-    tds = {"T1": _t("T1", "NID-1")}
+    # CME branch keys off the trade-level current_counterparty (NOT the DB).
+    tds = {"T1": _t("T1", "NID-1", current_counterparty=CME_NAME)}
     vs = [_v("T1", 100.0)]
-    db = {"NID-1": _nrow("NID-1", external=CME_NAME)}
+    db = {"NID-1": _nrow("NID-1")}
     p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
     row = _read(p)[2]
+    assert row[_NCOL["Counterparty"]] == CME_NAME
     assert row[_NCOL["Counterparty Type"]] == "Financial Market Utility"
 
 
 def test_non_cme_routes_to_bank(tmp_path):
+    tds = {"T1": _t("T1", "NID-1", current_counterparty="JP Morgan Chase Bank NA")}
+    vs = [_v("T1", 100.0)]
+    db = {"NID-1": _nrow("NID-1")}
+    p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
+    row = _read(p)[2]
+    assert row[_NCOL["Counterparty"]] == "JP Morgan Chase Bank NA"
+    assert row[_NCOL["Counterparty Type"]] == "Bank"
+
+
+def test_entity_is_always_american_express_company(tmp_path):
     tds = {"T1": _t("T1", "NID-1")}
     vs = [_v("T1", 100.0)]
-    db = {"NID-1": _nrow("NID-1", external="JP Morgan Chase Bank NA")}
+    # DB's amex_legal_entity_name is intentionally something different to
+    # show it's ignored.
+    db = {"NID-1": _nrow("NID-1", legal="Some other legal name from DB")}
     p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
-    assert _read(p)[2][_NCOL["Counterparty Type"]] == "Bank"
+    assert _read(p)[2][_NCOL["Entity"]] == "American Express Company"
+
+
+def test_counterparty_taken_from_first_trade_in_group(tmp_path):
+    # Two trades same netting_id; both should carry the same cpty in
+    # practice. We take the first one to stay deterministic.
+    tds = {
+        "T1": _t("T1", "NID-1", current_counterparty="Bank of America"),
+        "T2": _t("T2", "NID-1", current_counterparty="Bank of America"),
+    }
+    vs = [_v("T1", 100.0), _v("T2", -50.0)]
+    db = {"NID-1": _nrow("NID-1")}
+    p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
+    assert _read(p)[2][_NCOL["Counterparty"]] == "Bank of America"
 
 
 def test_blank_netting_id_trades_skipped(tmp_path):

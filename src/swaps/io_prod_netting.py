@@ -67,9 +67,9 @@ NETTING_FIELDS: list[str] = [
     "Field",                                 # A   "Position Netting"
     "As of Date",                            # B   val_date
     "Product",                               # C   "IRS"
-    "Entity",                                # D   netting DB AMEX Legal Entity name
+    "Entity",                                # D   always "American Express Company"
     "Oracle Entity Code",                    # E   netting DB Netting Entity (1000/1021)
-    "Counterparty",                          # F   netting DB External name
+    "Counterparty",                          # F   first trade-in-group current_counterparty
     "Counterparty Code",                     # G   blank
     "Payment Date",                          # H   blank
     "Maturity Date",                         # I   blank
@@ -175,7 +175,15 @@ def _row_for_group(
             f"build CCIDs."
         )
 
-    is_cme = (nrow.external_name == CME_NAME)
+    # Counterparty and Entity DO NOT come from the netting DB:
+    # * Counterparty = first trade-in-group's current_counterparty. All trades
+    #   sharing a netting_id should already point at the same counterparty
+    #   name (one netting_id <-> one cpty), so "first" is well-defined.
+    # * Entity = always the parent literal "American Express Company".
+    # The DB still supplies the netting flags, the Netting Entity code, and
+    # the CCID RC lookup.
+    cpty = (g.trades[0].current_counterparty or "").strip()
+    is_cme = (cpty == CME_NAME)
     counterparty_type = "Financial Market Utility" if is_cme else "Bank"
 
     gross_da = g.gross_da
@@ -191,9 +199,9 @@ def _row_for_group(
     cells[_NCOL["Field"]] = "Position Netting"
     cells[_NCOL["As of Date"]] = val_date
     cells[_NCOL["Product"]] = "IRS"
-    cells[_NCOL["Entity"]] = nrow.amex_legal_entity_name
+    cells[_NCOL["Entity"]] = "American Express Company"
     cells[_NCOL["Oracle Entity Code"]] = netting_entity
-    cells[_NCOL["Counterparty"]] = nrow.external_name
+    cells[_NCOL["Counterparty"]] = cpty
     cells[_NCOL["Netting ID"]] = g.netting_id
     cells[_NCOL["Gross DA"]] = gross_da
     cells[_NCOL["Gross DL"]] = gross_dl
