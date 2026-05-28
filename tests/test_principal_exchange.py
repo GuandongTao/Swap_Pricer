@@ -187,8 +187,8 @@ def test_csv_loader_passes_through_principal_exchange(tmp_path):
 
     (tmp_path / "X.csv").write_text(
         "trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,"
-        "fixed_principal_exchange,floating_principal_exchange\n"
-        "PEX_CSV,1000000,false,0.04,2026-06-15,2031-06-15,1Y,ACT/360,end,both\n",
+        "fixed_principal_exchange,floating_principal_exchange,netting_id\n"
+        "PEX_CSV,1000000,false,0.04,2026-06-15,2031-06-15,1Y,ACT/360,end,both,NID-PEX\n",
         encoding="utf-8",
     )
     td = CsvTradeLoader(tmp_path).load("PEX_CSV")
