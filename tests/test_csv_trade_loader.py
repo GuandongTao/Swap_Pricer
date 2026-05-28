@@ -16,6 +16,31 @@ T003,500000,false,0.0500,2026-06-15,2027-06-15,1M,30/360,ACT/360,0,2,1Y rcv-fixe
 """
 
 
+def test_duplicate_trade_id_raises(tmp_path):
+    body = (
+        "trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,"
+        "fixed_frequency,fixed_daycount\n"
+        "T001,1000,false,0.04,2026-06-15,2031-06-15,1Y,ACT/360\n"
+        "T002,1000,false,0.04,2026-06-15,2031-06-15,1Y,ACT/360\n"
+        "T001,2000,true,0.05,2026-06-15,2031-06-15,1Y,ACT/360\n"
+    )
+    (tmp_path / "batch.csv").write_text(body, encoding="utf-8")
+    with pytest.raises(ValueError, match="Duplicate trade_id 'T001'"):
+        CsvTradeLoader(tmp_path).load_all()
+
+
+def test_duplicate_trade_id_across_files_raises(tmp_path):
+    body = (
+        "trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,"
+        "fixed_frequency,fixed_daycount\n"
+        "T001,1000,false,0.04,2026-06-15,2031-06-15,1Y,ACT/360\n"
+    )
+    (tmp_path / "a.csv").write_text(body, encoding="utf-8")
+    (tmp_path / "b.csv").write_text(body, encoding="utf-8")
+    with pytest.raises(ValueError, match="Duplicate trade_id 'T001'"):
+        CsvTradeLoader(tmp_path).load_all()
+
+
 def test_loads_multiple_rows(tmp_path):
     p = tmp_path / "batch.csv"
     p.write_text(CSV_BODY, encoding="utf-8")

@@ -2,7 +2,7 @@
 
 Layout (one file per run):
 
-    Row 1   5-cell HEADER:   H | <yyyymmdd run date (today)> | IRS Valuation<val_date>-00001.csv | 00001 | KPMG
+    Row 1   5-cell HEADER:   H | <yyyymmdd run date (today)> | IRS_Valuation_<val_date>-00001.csv | 00001 | KPMG
     Row 2   49 field-name column headers (see :data:`PROD_FIELDS`)
     Row 3.. one row per priced trade, 49 columns
     Last    FOOTER row: T | <n_trades> | blanks ... with column-letter sums at
@@ -46,6 +46,7 @@ from datetime import date
 from pathlib import Path
 
 from .loaders.base import TradeDef
+from .netting_db import NettingRow
 from .pricer import SwapValuation
 
 # --- Spec constants ----------------------------------------------------------
@@ -186,6 +187,7 @@ def _row_for(
     v: SwapValuation,
     val_date: date,
     entity_rc: dict[str, str] | None = None,
+    netting_db: dict[str, NettingRow] | None = None,
 ) -> list[str]:
     is_cme = (td.current_counterparty == CME_NAME)
     npv = v.dirty
@@ -248,9 +250,23 @@ def _row_for(
     cells[_COL["Cleared Transaction indicator"]] = cme_indicator
     cells[_COL["Cash Settled CCP indicator"]] = cme_indicator
     cells[_COL["Deal Date"]] = td.deal_date
+    # Netting fields come from the netting DB (single source of truth, keyed
+    # by td.netting_id). Blank netting_id -> leave all three cells blank.
+    # Non-blank id that isn't in the DB -> hard error (same severity as a
+    # missing maturity_date), since the row would otherwise silently emit
+    # wrong information downstream.
     cells[_COL["Netting ID"]] = td.netting_id
-    cells[_COL["Cash Flow Netting Allowed"]] = td.cash_flow_netting_allowed
-    cells[_COL["Position Netting Allowed"]] = td.position_netting_allowed
+    nid = (td.netting_id or "").strip()
+    if nid:
+        if netting_db is None or nid not in netting_db:
+            raise ValueError(
+                f"{td.trade_id}: netting_id {nid!r} not found in netting "
+                f"database; every trade with a netting_id must resolve to "
+                f"a row in entity/Netting_Database.csv."
+            )
+        nrow = netting_db[nid]
+        cells[_COL["Cash Flow Netting Allowed"]] = nrow.cash_flow_netting_allowed
+        cells[_COL["Position Netting Allowed"]] = nrow.position_netting_allowed
     cells[_COL["Hedged Debt MTM"]] = v.pv_fixed
     cells[_COL["Balance Sheet CCID"]] = bs_ccid
     cells[_COL["PL/OCI CCID"]] = pl_ccid
@@ -275,8 +291,8 @@ def _footer(rows: list[list[str]], n_trades: int) -> list[str]:
 
 
 def prod_filename(val_date: date) -> str:
-    """Spec filename: ``IRS Valuation<YYYY-MM-DD>-00001.csv``."""
-    return f"IRS Valuation{val_date.isoformat()}-{VERSION_STAMP}.csv"
+    """Spec filename: ``IRS_Valuation_<YYYY-MM-DD>-00001.csv``."""
+    return f"IRS_Valuation_{val_date.isoformat()}-{VERSION_STAMP}.csv"
 
 
 def write_prod_csv(
@@ -285,6 +301,7 @@ def write_prod_csv(
     valuations: list[SwapValuation],
     val_date: date,
     entity_rc: dict[str, str] | None = None,
+    netting_db: dict[str, NettingRow] | None = None,
 ) -> Path:
     """Write the prod feed CSV.
 
@@ -314,7 +331,7 @@ def write_prod_csv(
                 maturity_date=v.meta.get("maturity_date", val_date),
                 fixed_frequency="1Y", fixed_daycount="ACT/360",
             )
-        rows.append(_row_for(td, v, val_date, entity_rc=entity_rc))
+        rows.append(_row_for(td, v, val_date, entity_rc=entity_rc, netting_db=netting_db))
     footer = _footer(rows, n_trades=len(rows))
 
     with out_path.open("w", encoding="utf-8", newline="") as fh:

@@ -154,16 +154,31 @@ class CsvTradeLoader(TradeLoader):
 
     def load_all(self) -> list[TradeDef]:
         out: list[TradeDef] = []
+        # Track where we first saw each trade_id so a duplicate report points
+        # the user at the prior occurrence, not just "somewhere upstream".
+        seen: dict[str, str] = {}   # trade_id -> "file:line"
         for p in self._csv_files():
             text = _strip_comment_lines(p.read_text(encoding="utf-8-sig"))
             df = pd.read_csv(io.StringIO(text), skip_blank_lines=True)
             if "trade_id" not in df.columns:
                 raise ValueError(f"{p}: CSV must include a 'trade_id' column")
             df = df.dropna(how="all")
-            for _, row in df.iterrows():
-                if pd.isna(row.get("trade_id")) or not str(row["trade_id"]).strip():
+            for line_no, row in enumerate(df.to_dict("records"), start=2):
+                tid = row.get("trade_id")
+                if tid is None or (isinstance(tid, float) and pd.isna(tid)):
                     continue
-                out.append(_parse_row(row.to_dict()))
+                tid_s = str(tid).strip()
+                if not tid_s:
+                    continue
+                origin = f"{p.name}:row {line_no}"
+                if tid_s in seen:
+                    raise ValueError(
+                        f"Duplicate trade_id {tid_s!r}: first seen at "
+                        f"{seen[tid_s]}, again at {origin}. Each trade row "
+                        f"must have a unique trade_id."
+                    )
+                seen[tid_s] = origin
+                out.append(_parse_row(row))
         return out
 
     def load(self, trade_id: str) -> TradeDef:

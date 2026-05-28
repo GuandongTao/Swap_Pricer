@@ -42,7 +42,9 @@ from .curve import ZeroCurve
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
 from .io_prod import prod_filename, write_prod_csv
+from .io_prod_netting import netting_filename, write_netting_csv
 from .loaders.base import CurveLoader, FixingLoader, TradeLoader
+from .netting_db import NettingRow
 from .manifest import RunManifest
 from .market_data import MarketData
 from .pricer import SwapPricer, SwapValuation
@@ -72,6 +74,7 @@ class Portfolio:
         write_portfolio_xlsx: bool = False,
         write_prod: bool = True,
         entity_rc: dict[str, str] | None = None,
+        netting_db: dict[str, NettingRow] | None = None,
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -201,8 +204,33 @@ class Portfolio:
             prod_path = out_dir / prod_filename(val_date)
             _log.info("Writing prod CSV -> %s", prod_path)
             with _timed(timings, "write_prod_csv"):
-                write_prod_csv(prod_path, trades_by_id, valuations, val_date, entity_rc=entity_rc)
+                write_prod_csv(
+                    prod_path, trades_by_id, valuations, val_date,
+                    entity_rc=entity_rc, netting_db=netting_db,
+                )
             manifest.outputs["prod_csv"] = str(prod_path)
+            # IRS Netting feed: same gating as IRS Valuation. Requires both the
+            # netting DB (per-netting-id fields) and the entity_rc lookup
+            # (CCID RC). If either is missing, skip with a warning rather than
+            # failing the whole run -- the valuation feed is the primary
+            # deliverable.
+            if netting_db is not None and entity_rc:
+                netting_path = out_dir / netting_filename(val_date)
+                _log.info("Writing netting CSV -> %s", netting_path)
+                with _timed(timings, "write_netting_csv"):
+                    write_netting_csv(
+                        netting_path, trades_by_id, valuations, val_date,
+                        netting_db=netting_db, entity_rc=entity_rc,
+                    )
+                manifest.outputs["netting_csv"] = str(netting_path)
+            else:
+                msg = (
+                    "IRS Netting CSV skipped: "
+                    f"netting_db={'present' if netting_db else 'missing'}, "
+                    f"entity_rc={'present' if entity_rc else 'missing'}."
+                )
+                _log.warning(msg)
+                manifest.warnings.append(msg)
 
         if write_portfolio_xlsx:
             portfolio_path = out_dir / f"portfolio_{val_date.isoformat()}.xlsx"

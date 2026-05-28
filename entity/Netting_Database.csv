@@ -1,0 +1,8 @@
+﻿CHATHAM/Quantum Listing,Netting Agreement,,,,,,,,,,AXP Master Netting tagging,Logic columns - not part of report
+CHATHAM/Quantum Listing,Amex Entity,AMEX Legal Entity name,External name,CPTY Code (as per Quantum) ,Product,Netting ID,Position Netting Allowed,Multiple Transactions Netting Allowed,Netting Entity,AXP code,Counterparty code,
+AUSTRALIA AND NEW ZEALAND BANKING GROUP LTD,1021,American Express Overseas Credit Corporation Limited,AUSTRALIA AND NEW ZEALAND BANKING GROUP LTD,AANZ,FX,F04337,Y,Y,1021,37,43,
+Bank Of America San Francisco,1021,American Express Overseas Credit Corporation Limited,Bank Of America San Francisco,BANK,FX,F04637,Y,Y,1021,37,46,
+Bank of America,1000,American Express Parent,Bank of America,BAML4,Swap,S04638,Y,Y,1000,38,46,
+Deutsche Bank,1000,American Express Parent,Deutsche Bank,DBBK,Swap,S07238,Y,Y,1000,38,72,
+Goldman Sachs and Co,1000,American Express Parent,Goldman Sachs and Co,GMS,Swap,S09138,Y,Y,1000,38,91,
+CME - Central Clearing,1000,American Express Parent,CME - Central Clearing,CME,Swap,S17238,N,Y,1000,38,172,

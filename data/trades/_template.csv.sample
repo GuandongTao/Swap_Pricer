@@ -97,7 +97,7 @@
 #
 # === SECTION 2: PRODUCTION-OUTPUT REFERENCE FIELDS ===
 #
-# These columns feed the prod CSV (IRS Valuation<val_date>-00001.csv) that is
+# These columns feed the prod CSV (IRS_Valuation_<val_date>-00001.csv) that is
 # written by default by every run. They are NOT used by pricing; an empty
 # cell writes a blank cell in the output. They sit to the RIGHT of the
 # pricing columns; the existing 34 columns above are unchanged.
@@ -136,9 +136,14 @@
 #   deal_date                    Trade date (ISO) -- when the swap was struck.
 #                                  Distinct from start_date (effective date);
 #                                  the two typically differ by ~2 business days.
-#   netting_id                   Unique netting-database key (free text)
-#   cash_flow_netting_allowed    Multiple-payments netting indicator (Yes/No)
-#   position_netting_allowed     MTM position netting indicator (Yes/No)
+#   netting_id                   Key into entity/Netting_Database.csv. The
+#                                  netting DB is the source of truth for the
+#                                  per-netting-group fields the prod CSV needs
+#                                  (Cash Flow Netting Allowed, Position Netting
+#                                  Allowed, Netting Entity); they are looked up
+#                                  by this id at emit time and are NOT input
+#                                  columns here. A non-blank netting_id that is
+#                                  missing from the DB is a hard input error.
 #
 # Output fields that are NOT sourced from this template (the prod writer fills
 # them itself):
@@ -159,7 +164,7 @@
 #     Liability=392001 / PL=465012). See plan.md "CCID composition".
 #
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,cash_flow_netting_allowed,position_netting_allowed
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Yes,Yes
-SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Yes,Yes
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Yes,No
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003

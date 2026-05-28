@@ -16,7 +16,7 @@ Run it on the machine where CCID is blank:
 To also inspect an already-generated production feed (the "final report"),
 point --prod-csv at it — the script reports the actual AU/AV cells written:
 
-    python scripts/diagnose_ccid.py --prod-csv "output/.../IRS Valuation20260331-00001.csv"
+    python scripts/diagnose_ccid.py --prod-csv "output/.../IRS_Valuation_2026-03-31-00001.csv"
 
 It is read-only — it loads files and reports, it never writes trade or feed data.
 """

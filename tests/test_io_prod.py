@@ -13,6 +13,7 @@ from swaps.io_prod import (
     _COL, _SUM_COLS, load_entity_rc, prod_filename, write_prod_csv,
 )
 from swaps.loaders.base import TradeDef
+from swaps.netting_db import NettingRow
 from swaps.pricer import SwapValuation
 
 
@@ -43,8 +44,7 @@ def _trade(trade_id="T1", current_counterparty="JP Morgan Chase Bank NA",
         counterparty_name_quantum="JPM", current_counterparty=current_counterparty,
         entity_name_quantum="AMEX_NA_001", reporting_party="Amex NA",
         counterparty_location="US", deal_date=date(2026, 3, 5),
-        netting_id="NID-1", cash_flow_netting_allowed="Yes",
-        position_netting_allowed="Yes",
+        netting_id="",
     )
     kw.update(overrides)
     return TradeDef(**kw)
@@ -80,7 +80,7 @@ def test_layout_header_field_row_trade_row_footer(tmp_path):
 
 
 def test_filename_format():
-    assert prod_filename(VAL) == "IRS Valuation2026-05-20-00001.csv"
+    assert prod_filename(VAL) == "IRS_Valuation_2026-05-20-00001.csv"
 
 
 # --- field mapping -----------------------------------------------------------
@@ -298,6 +298,46 @@ def test_load_entity_rc_reads_sample_report(tmp_path):
 
 def test_load_entity_rc_missing_file_returns_empty(tmp_path):
     assert load_entity_rc(tmp_path / "does_not_exist.csv") == {}
+
+
+# --- Netting DB lookup (AR / AS / AT) ----------------------------------------
+def _nrow(nid="NID-1", cf="Yes", pn="Yes", entity="1000",
+          legal="American Express Parent", external="JP Morgan Chase Bank NA"):
+    return NettingRow(
+        netting_id=nid, cash_flow_netting_allowed=cf, position_netting_allowed=pn,
+        netting_entity=entity, amex_legal_entity_name=legal, external_name=external,
+    )
+
+
+def test_netting_fields_filled_from_db_lookup(tmp_path):
+    td = _trade(netting_id="NID-1")
+    v = _valuation()
+    db = {"NID-1": _nrow(cf="Yes", pn="No")}
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL,
+                       netting_db=db)
+    row = _read(p)[2]
+    assert row[_COL["Netting ID"]] == "NID-1"
+    assert row[_COL["Cash Flow Netting Allowed"]] == "Yes"
+    assert row[_COL["Position Netting Allowed"]] == "No"
+
+
+def test_netting_id_missing_from_db_raises(tmp_path):
+    td = _trade(netting_id="NID-MISSING")
+    v = _valuation()
+    with pytest.raises(ValueError, match="not found in netting database"):
+        write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL,
+                       netting_db={"NID-1": _nrow()})
+
+
+def test_blank_netting_id_leaves_netting_cells_blank(tmp_path):
+    td = _trade(netting_id="")
+    v = _valuation()
+    # No netting_db needed when netting_id is blank.
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL)
+    row = _read(p)[2]
+    assert row[_COL["Netting ID"]] == ""
+    assert row[_COL["Cash Flow Netting Allowed"]] == ""
+    assert row[_COL["Position Netting Allowed"]] == ""
 
 
 # --- Sum-cols coverage sanity (lets the spec drift catch itself) ------------

@@ -243,7 +243,7 @@ Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic
 
 Every run (single-date *or* one date within a batch) is self-contained under
 `output/valdate_<val_date>_rundate_<run_date>/`. **By default (no flag) the
-run writes ONLY the prod CSV (`IRS Valuation<val_date>-00001.csv`).** Passing
+run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-00001.csv`).** Passing
 `--debug` flips every other artifact on (portfolio workbook + per-trade detail
 + per-trade debug + parquet). The default workbooks are now opt-in to keep
 nightly cloud runs lean. A batch additionally drops `batch_<UTCstamp>.log`
@@ -253,7 +253,7 @@ and `batch_<UTCstamp>.json` at the `output/` root. Full layout under
 ```
 output/
 ├── valdate_<val_date>_rundate_<run_date>/
-│   ├── IRS Valuation<val_date>-00001.csv  (ALWAYS, even without --debug)
+│   ├── IRS_Valuation_<val_date>-00001.csv  (ALWAYS, even without --debug)
 │   ├── portfolio_<val_date>.xlsx          (only with --debug)
 │   ├── detail/<trade_id>.xlsx             (only with --debug)
 │   ├── debug/<trade_id>_debug.xlsx        (only with --debug)
@@ -263,7 +263,7 @@ output/
 └── batch_<UTCstamp>.json                  (batch runs only)
 ```
 
-### Production CSV (`IRS Valuation<val_date>-00001.csv`)
+### Production CSV (`IRS_Valuation_<val_date>-00001.csv`)
 
 Sole default output. Matches the KPMG IRS-valuation feed spec
 (`Output_Format.xlsx`). Written by `src/swaps/io_prod.py::write_prod_csv`.
@@ -276,7 +276,7 @@ auto-increment scheme).
 
 | Row | Cells | Contents |
 |---|---|---|
-| 1 (header) | 5 | `H` \| `<yyyymmdd run date — today>` \| `IRS Valuation<val_date>-00001.csv` \| `00001` \| `KPMG` |
+| 1 (header) | 5 | `H` \| `<yyyymmdd run date — today>` \| `IRS_Valuation_<val_date>-00001.csv` \| `00001` \| `KPMG` |
 | 2 (field names) | 49 | column labels in exact spec order — see `PROD_FIELDS` in `io_prod.py` |
 | 3..N+2 (trades) | 49 | one row per priced valuation (matured trades still emitted with pricing = 0) |
 | N+3 (footer) | 49 | `T` \| `<n_trades>` \| blanks \| column-letter sums at G/H/I/J, Q/R, U/V/W, AK/AL, AW |
@@ -504,7 +504,7 @@ F:\Projects - Github\Swaps\
 │   └── trades/*.yaml
 ├── output/
 │   ├── valdate_<val_date>_rundate_<run_date>/
-│   │   ├── IRS Valuation<val_date>-00001.csv   (DEFAULT — always written)
+│   │   ├── IRS_Valuation_<val_date>-00001.csv   (DEFAULT — always written)
 │   │   ├── portfolio_<val_date>.xlsx           (--debug only)
 │   │   ├── detail/<trade_id>.xlsx              (--debug only)
 │   │   ├── debug/<trade_id>_debug.xlsx         (--debug only)
@@ -640,7 +640,7 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
    2026-05-20; includes 19 tests in `tests/test_io_prod.py` covering prod-CSV
    layout, CME branching, intercompany rendering, footer sums).
 2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/valdate_<val_date>_rundate_<run_date>/`:
-   - `IRS Valuation<val_date>-00001.csv` (always — default output)
+   - `IRS_Valuation_<val_date>-00001.csv` (always — default output)
    - `manifest_<val_date>.json`
    With `--debug` also:
    - `portfolio_<val_date>.xlsx` with four tabs

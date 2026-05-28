@@ -1,7 +1,7 @@
 """Portfolio pricer CLI.
 
 Usage:
-    # Default: ONLY the prod CSV (IRS Valuation<val_date>-00001.csv)
+    # Default: ONLY the prod CSV (IRS_Valuation_<val_date>-00001.csv)
     python scripts/price_portfolio.py --val-date 2026-03-31
 
     # Debug: prod CSV + portfolio workbook + per-trade detail + per-trade
@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from swaps.io_prod import load_entity_rc  # noqa: E402
+from swaps.netting_db import load_netting_db  # noqa: E402
 from swaps.loaders import CombinedTradeLoader  # noqa: E402
 from swaps.loaders.csv_trades import CsvTradeLoader  # noqa: E402
 from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader  # noqa: E402
@@ -49,6 +50,13 @@ def main(argv: list[str] | None = None) -> int:
         "--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
         help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
              "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
+    )
+    p.add_argument(
+        "--netting-db", default=str(ROOT / "entity" / "Netting_Database.csv"),
+        help="Netting Database CSV (keyed by Netting ID). Source of truth for "
+             "Cash Flow / Position Netting Allowed flags and the Netting Entity "
+             "on both the IRS Valuation and IRS Netting feeds. Missing file -> "
+             "IRS Netting feed is skipped (warning recorded to manifest).",
     )
     p.add_argument(
         "--debug", action="store_true",
@@ -107,6 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     if not entity_rc:
         log.warning("entity_rc lookup empty (path=%s) -> CCID fields will be blank", args.entity_rc)
 
+    netting_db = None
+    if Path(args.netting_db).exists():
+        netting_db = load_netting_db(args.netting_db)
+    else:
+        log.warning(
+            "netting database not found (path=%s) -> IRS Netting feed will "
+            "be skipped and netting fields on the IRS Valuation feed will "
+            "be blank", args.netting_db,
+        )
+
     try:
         pf = Portfolio(curve_loader, fixing_loader, trade_loader)
         # Default (no --debug): prod CSV only. --debug: everything.
@@ -119,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             write_debug=args.debug,
             write_parquet=args.debug,
             entity_rc=entity_rc,
+            netting_db=netting_db,
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")

@@ -46,6 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
              "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
     )
+    p.add_argument(
+        "--netting-db", default=str(ROOT / "entity" / "Netting_Database.csv"),
+        help="Netting Database CSV (keyed by Netting ID). Source of truth for "
+             "Cash Flow / Position Netting Allowed flags and the Netting Entity "
+             "on both the IRS Valuation and IRS Netting feeds. Missing file -> "
+             "IRS Netting feed is skipped (warning recorded to manifest).",
+    )
     p.add_argument("--max-workers", type=int, default=None, help="Parallel worker processes (default: auto)")
     p.add_argument(
         "--debug", action="store_true",
@@ -114,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         pillar_dates_df=args.pillar_dates_df,
         verbose=args.verbose,
         entity_rc_path=args.entity_rc,
+        netting_db_path=args.netting_db,
     )
 
     for r in results:
