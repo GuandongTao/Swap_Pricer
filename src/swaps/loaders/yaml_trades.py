@@ -1,7 +1,13 @@
-"""YAML-based trade loader. One file per trade under a directory."""
+"""YAML-based trade loader. One file per trade under a directory.
+
+Field names match :class:`TradeDef` (Bloomberg vocabulary). Only economic
+terms are required; every convention has a sensible default. Unknown keys are
+preserved in ``TradeDef.meta``.
+"""
 
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import date, datetime
 from pathlib import Path
 
@@ -13,6 +19,24 @@ REQUIRED = {
     "trade_id", "notional", "pay_fixed", "fixed_rate",
     "start_date", "maturity_date", "fixed_frequency", "fixed_daycount",
 }
+
+_DATE_FIELDS = {
+    "start_date", "maturity_date",
+    "fixed_first_period_accrual_end_date",
+    "floating_first_period_accrual_end_date",
+}
+_FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
+_BOOL_FIELDS = {"pay_fixed"}
+_INT_FIELDS = {
+    "fixed_payment_delay_bdays", "floating_payment_delay_bdays",
+    "floating_reset_lag_bdays", "floating_lockout_bdays",
+}
+_DATELIST_FIELDS = {
+    "fixed_calculation_calendar_extras", "fixed_payment_calendar_extras",
+    "floating_calculation_calendar_extras", "floating_fixing_calendar_extras",
+    "floating_payment_calendar_extras",
+}
+_FIELD_NAMES = {f.name for f in fields(TradeDef)} - {"meta"}
 
 
 def _to_date(v) -> date:
@@ -35,61 +59,27 @@ def _parse(raw: dict, path: Path) -> TradeDef:
     missing = REQUIRED - raw.keys()
     if missing:
         raise ValueError(f"Trade file {path} missing required fields: {sorted(missing)}")
-    known = REQUIRED | {
-        "floating_frequency",
-        "floating_daycount", "floating_spread",
-        "fixed_principal_exchange", "floating_principal_exchange",
-        "fixing_calendar", "payment_calendar",
-        "fixing_calendar_extras", "payment_calendar_extras",
-        "fixing_calendar_extras_file", "payment_calendar_extras_file",
-        "payment_delay_bdays", "fixed_payment_delay_bdays",
-        "floating_payment_delay_bdays", "lockout_bdays", "business_day_convention",
-        "fixed_spot_roll", "fixed_accrual_roll", "fixed_pay_roll",
-        "floating_accrual_roll", "floating_pay_roll",
-        "floating_fixing_roll", "floating_fixing_lag_bdays",
-    }
-    return TradeDef(
-        trade_id=str(raw["trade_id"]),
-        notional=float(raw["notional"]),
-        pay_fixed=bool(raw["pay_fixed"]),
-        fixed_rate=float(raw["fixed_rate"]),
-        start_date=_to_date(raw["start_date"]),
-        maturity_date=_to_date(raw["maturity_date"]),
-        fixed_frequency=str(raw["fixed_frequency"]),
-        fixed_daycount=str(raw["fixed_daycount"]),
-        floating_frequency=str(raw.get("floating_frequency", "")),
-        floating_daycount=str(raw.get("floating_daycount", "ACT/360")),
-        floating_spread=float(raw.get("floating_spread", 0.0)),
-        fixed_principal_exchange=str(raw.get("fixed_principal_exchange", "none")),
-        floating_principal_exchange=str(raw.get("floating_principal_exchange", "none")),
-        fixing_calendar=str(raw.get("fixing_calendar", "NY_FED")),
-        payment_calendar=str(raw.get("payment_calendar", "NY_FED")),
-        fixing_calendar_extras=_to_date_list(raw.get("fixing_calendar_extras")),
-        payment_calendar_extras=_to_date_list(raw.get("payment_calendar_extras")),
-        fixing_calendar_extras_file=raw.get("fixing_calendar_extras_file"),
-        payment_calendar_extras_file=raw.get("payment_calendar_extras_file"),
-        payment_delay_bdays=int(raw.get("payment_delay_bdays", 0)),
-        fixed_payment_delay_bdays=(
-            int(raw["fixed_payment_delay_bdays"])
-            if raw.get("fixed_payment_delay_bdays") is not None
-            else None
-        ),
-        floating_payment_delay_bdays=(
-            int(raw["floating_payment_delay_bdays"])
-            if raw.get("floating_payment_delay_bdays") is not None
-            else None
-        ),
-        lockout_bdays=int(raw.get("lockout_bdays", 0)),
-        business_day_convention=str(raw.get("business_day_convention", "ModifiedFollowing")),
-        fixed_spot_roll=str(raw.get("fixed_spot_roll", "")),
-        fixed_accrual_roll=str(raw.get("fixed_accrual_roll", "")),
-        fixed_pay_roll=str(raw.get("fixed_pay_roll", "")),
-        floating_accrual_roll=str(raw.get("floating_accrual_roll", "")),
-        floating_pay_roll=str(raw.get("floating_pay_roll", "")),
-        floating_fixing_roll=str(raw.get("floating_fixing_roll", "")),
-        floating_fixing_lag_bdays=int(raw.get("floating_fixing_lag_bdays", 0)),
-        meta={k: v for k, v in raw.items() if k not in known},
-    )
+
+    kwargs: dict = {}
+    for name in _FIELD_NAMES:
+        if name not in raw or raw[name] is None:
+            continue
+        v = raw[name]
+        if name in _DATE_FIELDS:
+            kwargs[name] = _to_date(v)
+        elif name in _FLOAT_FIELDS:
+            kwargs[name] = float(v)
+        elif name in _BOOL_FIELDS:
+            kwargs[name] = bool(v)
+        elif name in _INT_FIELDS:
+            kwargs[name] = int(v)
+        elif name in _DATELIST_FIELDS:
+            kwargs[name] = _to_date_list(v)
+        else:
+            kwargs[name] = str(v)
+
+    meta = {k: v for k, v in raw.items() if k not in _FIELD_NAMES}
+    return TradeDef(**kwargs, meta=meta)
 
 
 class YamlTradeLoader(TradeLoader):

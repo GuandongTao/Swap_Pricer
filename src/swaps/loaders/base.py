@@ -22,6 +22,20 @@ class FixingLoader(ABC):
 
 @dataclass
 class TradeDef:
+    """Bloomberg-matched trade definition. Every *convention* is per-leg; the
+    only shared fields are economic terms (notional, dates, rate, direction).
+
+    Roll values accepted everywhere a `*_adj` / roll appears:
+    ``None``/``NoAdjust``, ``Following``, ``ModifiedFollowing``, ``Preceding``,
+    ``ModifiedPreceding``, ``Nearest``.
+
+    Bloomberg-derived fields (omit on Bloomberg-matched trades):
+      * ``*_pay_date_adj``      blank -> that leg's ``*_bus_day_adj``
+      * ``*_payment_calendar``  blank -> that leg's ``*_calculation_calendar``
+      * ``floating_reset_lag_bdays`` default 0 (in-arrears OIS has no lookback)
+    """
+
+    # --- Economic terms (legitimately shared / trade-level) ---
     trade_id: str
     notional: float
     pay_fixed: bool
@@ -30,43 +44,80 @@ class TradeDef:
     maturity_date: date
     fixed_frequency: str
     fixed_daycount: str
-    # Floating-leg payment frequency. Blank ("") falls back to fixed_frequency
-    # (the standard compounded-in-arrears OIS convention: legs share periods).
-    # Set explicitly for cross-frequency structures, e.g. 1Y fixed / 3M float.
+
+    # --- Fixed leg conventions (per-leg) ---
+    fixed_bus_day_adj: str = "ModifiedFollowing"
+    fixed_eff_date_adj: str = ""          # blank -> fixed_bus_day_adj
+    fixed_pay_date_adj: str = ""          # blank -> fixed_bus_day_adj
+    fixed_adjust: str = "acc_and_pay"     # acc_and_pay | pay | none
+    fixed_roll_convention: str = "forward_eom"
+    fixed_principal_exchange: str = "none"
+    fixed_payment_delay_bdays: int = 0
+    fixed_calculation_calendar: str = "NY_FED"
+    fixed_payment_calendar: str = ""      # blank -> fixed_calculation_calendar
+    fixed_calculation_calendar_extras: list[date] = field(default_factory=list)
+    fixed_payment_calendar_extras: list[date] = field(default_factory=list)
+    fixed_calculation_calendar_extras_file: str | None = None
+    fixed_payment_calendar_extras_file: str | None = None
+    # BBG "First Payment Date" override: the end of accrual period 1 (start of
+    # period 2). When set, subsequent unadjusted accrual ends are stepped
+    # forward by `fixed_frequency` from this anchor in strict calendar-day
+    # arithmetic (4/30 -> 7/30 -> 10/30 -> 1/30, never snapping to month-end).
+    # Period 1 is the short front stub effective_date -> anchor; later
+    # boundaries are bus-day-adjusted independently. When this is set, the
+    # leg's `roll_convention` direction and EOM bits are ignored (the anchor
+    # dictates them); other conventions (calendars, bus_day_adj, etc.) still
+    # apply normally. Must lie strictly between start_date and maturity_date.
+    fixed_first_period_accrual_end_date: date | None = None
+
+    # --- Floating leg conventions (per-leg) ---
+    # Blank floating_frequency -> fixed_frequency (standard OIS: shared periods).
     floating_frequency: str = ""
     floating_daycount: str = "ACT/360"
     floating_spread: float = 0.0
-    # Principal-exchange policy, separately configurable per leg.
-    # Accepted: "none" (default), "start", "end", "both".
-    fixed_principal_exchange: str = "none"
+    floating_bus_day_adj: str = "ModifiedFollowing"
+    floating_eff_date_adj: str = ""       # blank -> floating_bus_day_adj
+    floating_pay_date_adj: str = ""       # blank -> floating_bus_day_adj
+    floating_rst_bus_day_adj: str = ""    # blank -> floating_bus_day_adj
+    floating_adjust: str = "acc_and_pay"  # acc_and_pay | pay | none
+    floating_roll_convention: str = "forward_eom"
     floating_principal_exchange: str = "none"
-    # Calendar base name (must be registered) and optional extra holidays
-    fixing_calendar: str = "NY_FED"
-    payment_calendar: str = "NY_FED"
-    fixing_calendar_extras: list[date] = field(default_factory=list)
-    payment_calendar_extras: list[date] = field(default_factory=list)
-    fixing_calendar_extras_file: str | None = None
-    payment_calendar_extras_file: str | None = None
-    # Shared payment delay (business days between accrual end and cash date).
-    # Per-leg overrides below; each falls back to this when left None.
-    payment_delay_bdays: int = 0
-    fixed_payment_delay_bdays: int | None = None
-    floating_payment_delay_bdays: int | None = None
-    lockout_bdays: int = 0
-    business_day_convention: str = "ModifiedFollowing"
-    # Per-leg roll conventions. Each falls back to `business_day_convention` when
-    # left blank (empty string or None). Accepted values: None, NoAdjust, Following,
-    # ModifiedFollowing, Preceding, ModifiedPreceding, Nearest.
-    fixed_spot_roll: str = ""
-    fixed_accrual_roll: str = ""
-    fixed_pay_roll: str = ""
-    floating_accrual_roll: str = ""
-    floating_pay_roll: str = ""
-    # Fixing/lookback roll convention defaults to Preceding (standard for OIS
-    # observation when the natural observation date is non-BD). Lookback lag in
-    # business days; 0 = rate-set-in-advance / no lag.
-    floating_fixing_roll: str = ""
-    floating_fixing_lag_bdays: int = 0
+    floating_payment_delay_bdays: int = 0
+    floating_reset_lag_bdays: int = 0     # business-day lookback; 0 = in-arrears
+    floating_lockout_bdays: int = 0
+    floating_calculation_calendar: str = "NY_FED"
+    floating_fixing_calendar: str = "NY_FED"
+    floating_payment_calendar: str = ""   # blank -> floating_calculation_calendar
+    floating_calculation_calendar_extras: list[date] = field(default_factory=list)
+    floating_fixing_calendar_extras: list[date] = field(default_factory=list)
+    floating_payment_calendar_extras: list[date] = field(default_factory=list)
+    floating_calculation_calendar_extras_file: str | None = None
+    floating_fixing_calendar_extras_file: str | None = None
+    floating_payment_calendar_extras_file: str | None = None
+    # BBG "First Payment Date" override (see fixed_first_period_accrual_end_date).
+    floating_first_period_accrual_end_date: date | None = None
+
+    # --- Production-output fields (sourced 1:1 from the trade row; not used by
+    # pricing). Every field is optional and defaults to blank: an omitted
+    # column in the CSV writes a blank cell in the prod CSV. The CME-branch
+    # logic on `current_counterparty` is an EXACT string match against
+    # "CME Clearing House"; anything else routes to the Bank/OTC-Bilateral
+    # branch. See _template.csv.sample for the full Bloomberg-to-output map.
+    quantum_deal_number: str = ""
+    oracle_entity_code: str = ""
+    notional_currency: str = ""
+    intercompany: bool = False
+    counterparty_name_quantum: str = ""
+    current_counterparty: str = ""
+    entity_name_quantum: str = ""
+    reporting_party: str = ""
+    counterparty_location: str = ""
+    deal_date: date | None = None       # trade date (NOT effective / start_date)
+    # Key into entity/Netting_Database.csv; the cash-flow / position netting
+    # allowed flags and the netting entity are looked up from the DB at
+    # output-emit time, NOT carried per-trade.
+    netting_id: str = ""
+
     meta: dict = field(default_factory=dict)
 
 

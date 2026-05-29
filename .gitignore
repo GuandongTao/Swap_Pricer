@@ -21,6 +21,9 @@ Thumbs.db
 # Excel lock files
 ~$*
 
+# Ad-hoc scratch / one-off diagnostics — never committed (see DEV_ARTIFACTS.md)
+/_scratch/
+
 # Golden-master snapshots are derived from market data and regenerated locally.
 tests/golden/*.json
 

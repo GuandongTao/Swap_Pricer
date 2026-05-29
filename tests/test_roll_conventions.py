@@ -45,8 +45,8 @@ def test_generate_schedule_separate_pay_roll():
         termination_date=date(2026, 12, 25),  # Friday, Christmas (NY_FED holiday)
         frequency="1M",
         calendar=NY_FED,
-        accrual_roll="Preceding",
-        pay_roll="Following",
+        bus_day_adj="Preceding",
+        pay_date_adj="Following",
         payment_delay_bdays=0,
     )
     last = sched[-1]
@@ -111,18 +111,18 @@ start_date: 2026-06-15
 maturity_date: 2031-06-15
 fixed_frequency: 1Y
 fixed_daycount: ACT/360
-fixed_spot_roll: Following
-fixed_accrual_roll: ModifiedFollowing
-fixed_pay_roll: Following
-floating_accrual_roll: ModifiedFollowing
-floating_pay_roll: Following
-floating_fixing_roll: Preceding
-floating_fixing_lag_bdays: 2
+fixed_eff_date_adj: Following
+fixed_bus_day_adj: ModifiedFollowing
+fixed_pay_date_adj: Following
+floating_bus_day_adj: ModifiedFollowing
+floating_pay_date_adj: Following
+floating_rst_bus_day_adj: Preceding
+floating_reset_lag_bdays: 2
 """,
         encoding="utf-8",
     )
     td = YamlTradeLoader(tmp_path).load("ROLL_TEST")
-    assert td.fixed_spot_roll == "Following"
-    assert td.fixed_accrual_roll == "ModifiedFollowing"
-    assert td.floating_fixing_roll == "Preceding"
-    assert td.floating_fixing_lag_bdays == 2
+    assert td.fixed_eff_date_adj == "Following"
+    assert td.fixed_bus_day_adj == "ModifiedFollowing"
+    assert td.floating_rst_bus_day_adj == "Preceding"
+    assert td.floating_reset_lag_bdays == 2

@@ -12,6 +12,81 @@ Outputs: clean / dirty / accrued / DV01 per trade plus full cashflow detail, exp
 
 ---
 
+## Bloomberg-Matched Convention Schema — branch `feature/bloomberg-convention-match`
+
+This branch rewrites the convention model to mirror Bloomberg SWPM leg
+settings. **Every convention is per-leg; the only shared (trade-level) fields
+are economic terms.** Supersedes the per-leg-roll rows in *Resolved
+Conventions* below where they conflict.
+
+**Shared / trade-level (unchanged, legitimately overarching):**
+`trade_id`, `notional`, `pay_fixed`, `fixed_rate` (fixed-only), `start_date`,
+`maturity_date`.
+
+**Removed:** `business_day_convention` (global roll fallback — gone, no shared
+fallback), shared `fixing_calendar` / `payment_calendar`, shared
+`payment_delay_bdays`, the `*_spot_roll` / `*_accrual_roll` / `*_pay_roll` /
+`*_fixing_roll` names, unprefixed `lockout_bdays`.
+
+**Per-leg field schema (Bloomberg vocabulary):**
+
+| Bloomberg | Fixed field | Floating field | Values / default |
+|---|---|---|---|
+| Eff Date Adj | `fixed_eff_date_adj` | `floating_eff_date_adj` | roll value; blank → leg Bus Day Adj |
+| Bus Day Adj | `fixed_bus_day_adj` | `floating_bus_day_adj` | roll value (required) |
+| Pay Date Adj | `fixed_pay_date_adj` | `floating_pay_date_adj` | roll value; blank → **leg's own Bus Day Adj** |
+| Rst Bus Day Adj | — | `floating_rst_bus_day_adj` | roll value; blank → leg Bus Day Adj |
+| Adjust | `fixed_adjust` | `floating_adjust` | `acc_and_pay` (=legacy) \| `pay` \| `none`; default `acc_and_pay` |
+| Roll Convention | `fixed_roll_convention` | `floating_roll_convention` | `forward` \| `forward_eom` \| `backward` \| `backward_eom`; **default `forward_eom`** |
+| Calc calendar | `fixed_calculation_calendar` | `floating_calculation_calendar` | calendar name; default `NY_FED` (FD) |
+| Reset calendar | — | `floating_fixing_calendar` | default `NY_FED` (FD) |
+| Pay calendar | `fixed_payment_calendar` | `floating_payment_calendar` | blank → **leg's Calculation calendar** (= FD) |
+| (extras) | `fixed_*_calendar_extras[/_file]` | `floating_*_calendar_extras[/_file]` | per-leg, optional |
+| Pay delay | `fixed_payment_delay_bdays` | `floating_payment_delay_bdays` | int, default 0 (no shared field) |
+| Reset/lookback lag | — | `floating_reset_lag_bdays` | int, default 0 (was `floating_fixing_lag_bdays`) |
+| Lockout | — | `floating_lockout_bdays` | int, default 0 (was `lockout_bdays`) |
+| (kept) | `fixed_frequency`, `fixed_daycount`, `fixed_principal_exchange` | `floating_frequency`, `floating_daycount`, `floating_spread`, `floating_principal_exchange` | unchanged |
+
+Roll values accepted (unchanged set): `None`/`NoAdjust`, `Following`,
+`ModifiedFollowing`, `Preceding`, `ModifiedPreceding`, `Nearest`.
+
+**Semantics / engine changes:**
+
+- **Roll Convention** owns generation direction **and** stub placement **and**
+  the EOM rule: `forward*` = generate from effective date forward, stub at
+  back, anchor = effective date; `backward*` = generate from maturity
+  backward, stub at front, anchor = maturity (this *backward* is the legacy
+  `ShortFront` behavior). `*_eom` arms the end-of-month rule: when the anchor
+  is its month's last day, every period boundary snaps to month-end; for
+  non-month-end anchors `forward_eom` ≡ `forward`. **Engine default is now
+  `forward_eom`** — existing trades & golden master move and are regenerated.
+- **Adjust** selects which dates the accrual day-count uses:
+  `acc_and_pay` → adjusted bounds (legacy behavior); `pay` → **unadjusted**
+  bounds for accrual, only the payment date adjusted; `none` → nothing
+  adjusted. `AccrualPeriod` carries **both** unadjusted and adjusted bounds
+  (additive). Payment date is re-based on the **unadjusted** period end +
+  pay delay, then rolled by Pay Date Adj (corrects the legacy behavior of
+  deriving pay from the already-accrual-adjusted end).
+- **Validation (two-tier, no strict flag):** any input combination is
+  accepted; *impossible* combos raise a hard error; combinations Bloomberg
+  grays out (e.g. fixed `adjust=acc_and_pay` with an EOM roll + 30/360
+  family) emit a WARNING into `manifest.warnings[]`. Trades still price.
+- **Hardcoded-assumption guards** (not settings): a trade requesting an
+  unimplemented calendar, a non-in-arrears reset, or a non-coupon payment
+  type raises a clear error rather than mispricing silently.
+
+**Bloomberg-derived (not separate BBG inputs — omit on matched trades):**
+`*_pay_date_adj` blank → that leg's Bus Day Adj; `*_payment_calendar` blank →
+that leg's Calculation calendar; `floating_reset_lag_bdays` default `0`
+(in-arrears OIS has no lookback). Present only so non-Bloomberg trades can
+override; omitting all five reproduces Bloomberg exactly.
+
+**Known simplifications:** the terminal/maturity date is rolled under the
+leg's Bus Day Adj (no separate termination-date adjustment); reset uses
+lookback only (no observation-shift variant) — flag per trade if needed.
+
+---
+
 ## Resolved Conventions
 
 | Topic | Decision |
@@ -134,14 +209,19 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 
 ### Loaders (input abstraction)
 
-- **`CurveLoader`** *(ABC)* — `load(val_date, curve_name) → ZeroCurve`.
-  - `ExcelCurveLoader` *(now)*, `DataFrameCurveLoader` *(tests & future automation)*. Ports for DB/API later.
+- **`CurveLoader`** *(ABC)* — `load(val_date, curve_name) → ZeroCurve`. Three concrete implementations selected by CLI flag (mutually exclusive):
+  - `ExcelCurveLoader` *(default; no flag)* — reads the production `market_environment_YYYY-MM-DD.csv`; converts zero rates to DFs via `RateQuoting` (default `ContinuousACT360`).
+  - `DatedCurveLoader` *(`--pillar-dates`)* — reads two no-header CSVs per val_date, `sofr_YYYY-MM-DD.csv` and `ff_YYYY-MM-DD.csv` (col A pillar date ISO, col B zero rate decimal). Bypasses `tenor_to_date`; same `RateQuoting` is still applied to convert rates → DFs.
+  - `DatedDFCurveLoader` *(`--pillar-dates-df`)* — reads `sofr_df_YYYY-MM-DD.csv` and `ff_df_YYYY-MM-DD.csv` (col A pillar date ISO, col B = **discount factor**). Bypasses `RateQuoting` entirely; supplied DFs feed straight into the log-linear interpolation pipeline. `Pillar.zero_rate` is `NaN` (no quoting convention was applied — honest signal in the debug frame). DV01 bumping on this path uses continuous-ACT/360 equivalence at the DF level: `DF_new = DF · exp(−δ · days / 360)`.
+  - All three produce a `ZeroCurve` with identical downstream behaviour; the constructor path differs only in how DFs are obtained. Ports for DB/API later.
 - **`FixingLoader`** *(ABC)* — `ExcelFixingLoader`, `DataFrameFixingLoader`.
 - **`TradeLoader`** *(ABC)* — `YamlTradeLoader`, `DataFrameTradeLoader`.
 
 **Input formats (production, only formats supported — legacy synthetic formats retired 2026-05-15):**
 
-- **Curve** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
+- **Curve — default (`market_environment` path)** — `data/curves/market_environment_YYYY-MM-DD.csv` (ISO date, dashes; one conceptual sheet `in`). Has a few non-data header rows on top (`Name`/`Date`/`Property` in col A) and many interleaved irrelevant pillars (other currencies, EQ/FX/VOL tickers). `ExcelCurveLoader` resolves the file by ISO `val_date` in the filename and filters column A by `TICKER_RE` (`^IR\.USD-(SOFR|FEDFUNDS)-ON\.ZERORATE-([0-9A-Z]+)\.MID$`) — header rows and foreign pillars drop out automatically; col B is the zero rate. A shared row iterator handles `.csv` (and `.xlsx` for ad-hoc `load_from_file`) so the col-A filter is identical across paths. The old `CurvesYYYYMMDD.xlsx` pattern is no longer supported.
+- **Curve — `--pillar-dates` (dated rate pillars)** — two no-header CSVs per val_date in `data/curves/`: `sofr_YYYY-MM-DD.csv` (discount) and `ff_YYYY-MM-DD.csv` (projection). Col A pillar date (ISO), col B zero rate (decimal). No ticker filtering; every non-empty row is a pillar.
+- **Curve — `--pillar-dates-df` (dated discount factors)** — `sofr_df_YYYY-MM-DD.csv` and `ff_df_YYYY-MM-DD.csv`. Same shape as `--pillar-dates` but col B is the DF (positive, typically ≤ 1). Bypasses `RateQuoting`.
 - **Fixings** — `data/fixings/fixing_cail_USD-FEDFUNDS-ON.csv`; `ticker,date,rate` content identical to the old `fedfunds.csv` (no special handling). `ExcelFixingLoader` already auto-detects this layout.
 
 Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic_fixings.py`) now emit these production formats directly. Curve/fixing files normalize to the same in-memory `ZeroCurve` / `FixingHistory`, so nothing downstream of the loaders changed.
@@ -162,22 +242,161 @@ Synthetic generators (`scripts/generate_synthetic_curve.py`, `generate_synthetic
 ## Output Layout
 
 Every run (single-date *or* one date within a batch) is self-contained under
-`output/valdate_<val_date>_rundate_<run_date>/` (folder name carries both the
-valuation date and the execution date). A batch additionally drops
-`batch_<UTCstamp>.log` and `batch_<UTCstamp>.json` at the `output/` root
-(outside all the per-run folders). Layout:
+`output/valdate_<val_date>_rundate_<run_date>/`. **By default (no flag) the
+run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-00001.csv`).** Passing
+`--debug` flips every other artifact on (portfolio workbook + per-trade detail
++ per-trade debug + parquet). The default workbooks are now opt-in to keep
+nightly cloud runs lean. A batch additionally drops `batch_<UTCstamp>.log`
+and `batch_<UTCstamp>.json` at the `output/` root. Full layout under
+`--debug`:
 
 ```
 output/
 ├── valdate_<val_date>_rundate_<run_date>/
-│   ├── portfolio_<val_date>.xlsx
-│   ├── detail/<trade_id>.xlsx
-│   ├── debug/<trade_id>_debug.xlsx        (when --debug)
-│   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet
+│   ├── IRS_Valuation_<val_date>-00001.csv  (ALWAYS, even without --debug)
+│   ├── portfolio_<val_date>.xlsx          (only with --debug)
+│   ├── detail/<trade_id>.xlsx             (only with --debug)
+│   ├── debug/<trade_id>_debug.xlsx        (only with --debug)
+│   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet (only with --debug)
 │   └── manifest_<val_date>.json
 ├── batch_<UTCstamp>.log                   (batch runs only)
 └── batch_<UTCstamp>.json                  (batch runs only)
 ```
+
+### Production CSV (`IRS_Valuation_<val_date>-00001.csv`)
+
+Sole default output. Matches the KPMG IRS-valuation feed spec
+(`Output_Format.xlsx`). Written by `src/swaps/io_prod.py::write_prod_csv`.
+
+**Encoding**: UTF-8 (no BOM). **Version stamp**: hard-coded `"00001"` per
+spec (file is not yet in production; consumer has not requested an
+auto-increment scheme).
+
+**Row structure** (49 columns wide, A..AW):
+
+| Row | Cells | Contents |
+|---|---|---|
+| 1 (header) | 5 | `H` \| `<yyyymmdd run date — today>` \| `IRS_Valuation_<val_date>-00001.csv` \| `00001` \| `KPMG` |
+| 2 (field names) | 49 | column labels in exact spec order — see `PROD_FIELDS` in `io_prod.py` |
+| 3..N+2 (trades) | 49 | one row per priced valuation (matured trades still emitted with pricing = 0) |
+| N+3 (footer) | 49 | `T` \| `<n_trades>` \| blanks \| column-letter sums at G/H/I/J, Q/R, U/V/W, AK/AL, AW |
+
+**Field sources** (49 columns total, A..AW):
+
+| Output field | Column | Source |
+|---|---|---|
+| Trade Reference Number | A | always blank ("Not Required") |
+| Internal Reference Number | B | always blank |
+| Quantum Deal Number | C | `td.quantum_deal_number` (template) |
+| Oracle Entity Code | D | `td.oracle_entity_code` (template) |
+| Notional Currency | E | `td.notional_currency` (template) |
+| As of Date | F | `val_date` (CLI) |
+| Clean price | G | `v.clean` |
+| Accrued Interest | H | `v.accrued` |
+| Total Value (NPV) | I | `v.dirty` |
+| DV01 | J | `v.dv01` |
+| Valuation Currency | K | constant `"USD"` |
+| Child Reference Number / Period Start/End/Payment | L–O | always blank |
+| Maturity Date | P | `td.maturity_date` |
+| Notional 1 Amount | Q | `td.notional` |
+| Notional 1 Amount USD | R | `td.notional` (book is USD-only — same value) |
+| Pay Rec Status / Component Type | S–T | always blank |
+| Coupon FV / Intrinsic Value FV / Time Value FV | U–W | always blank (footer sums = 0) |
+| Intercompany Trade | X | `"Yes"`/`"No"` from `td.intercompany` (bool) |
+| Counterparty Name (Quantum) | Y | `td.counterparty_name_quantum` |
+| Current Counterparty | Z | `td.current_counterparty` |
+| Entity Name (Quantum) | AA | `td.entity_name_quantum` |
+| Reporting Party | AB | `td.reporting_party` |
+| InternalFacing-StreetFacing | AC | always blank |
+| Product | AD | constant `"IR"` |
+| Sub-Product2 | AE | CME → `"OTC - Centralized (Principal)"`, else `"OTC - Bilateral"` |
+| Collateral Level | AF | constant `"Fully Collateralized"` |
+| Counterparty Code | AG | always blank |
+| Counterparty Type | AH | CME → `"Financial Market Utility"`, else `"Bank"` |
+| Counterparty Location | AI | `td.counterparty_location` |
+| HCL Type | AJ | constant `"Interest Rate Swap"` |
+| DA | AK | `npv` if `npv > 0` else blank |
+| DL | AL | `npv` if `npv < 0` else blank |
+| Asset Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
+| Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"Yes"`, else `"No"` |
+| Deal Date | AQ | `td.deal_date` (trade date — distinct from `start_date`) |
+| Netting ID | AR | `td.netting_id` |
+| Cash Flow Netting Allowed | AS | `td.cash_flow_netting_allowed` |
+| Position Netting Allowed | AT | `td.position_netting_allowed` |
+| Balance Sheet CCID | AU | 9-segment composite ID (see CCID section below); blank if entity lookup misses or NPV == 0 |
+| PL/OCI CCID | AV | 9-segment composite ID (Natural Account `465012` regardless of sign); blank if entity lookup misses |
+| Hedged Debt MTM | AW | `v.pv_fixed` (PV of fixed leg under SOFR DF — equates to the hedged-debt fair value) |
+
+**CME-branch rule**: an **exact** string equality
+`td.current_counterparty == "CME Clearing House"` triggers all five
+CME-cleared output values (Sub-Product2 / Counterparty Type / QCCP /
+Cleared / Cash-Settled CCP). Anything else — including `"CME"`,
+`"CME Clearing house"`, leading/trailing whitespace, or different casing —
+routes to the Bank / OTC-Bilateral branch. This is deliberate: a fuzzy match
+would silently bucket typos into the wrong cleared status. The expected
+string is documented in `_template.csv.sample`.
+
+**CCID composition (cols AU / AV)** — per `CCID.xlsx`:
+
+```
+CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reserve1-Reserve2
+```
+
+9 dash-joined segments. Entity = `td.oracle_entity_code`. RC is looked up
+from the **Entity Reference Report** (`entity/Entity_Reference_Report.csv` by
+default; columns `Entity_Code, Default RC`). The trailing 6 segments are
+zero-padded defaults: `000000-0000-000000-000000-000000-0000`.
+
+Natural Account varies by CCID type and Asset/Liability sign:
+
+| CCID | NPV > 0 (Asset) | NPV < 0 (Liability) | NPV == 0 |
+|---|---|---|---|
+| **Balance Sheet** (AU) | `192001` | `392001` | blank (matches blank Asset Liability Tag) |
+| **PL/OCI** (AV) | `465012` | `465012` | `465012` |
+
+If the entity code is blank or missing from the lookup table, **both** CCID
+fields are emitted blank — no half-built id ever leaves the writer. The
+lookup file path is overridable per-run via `--entity-rc <path>`; the file
+itself is optional (missing file → all CCID cells blank, with a warning).
+
+Example for `oracle_entity_code = "1000"`, RC `100008`, asset trade:
+```
+AU = 1000-100008-192001-000000-0000-000000-000000-000000-0000
+AV = 1000-100008-465012-000000-0000-000000-000000-000000-0000
+```
+
+**Footer sum specification** (drawn directly from `Output_Format.xlsx`,
+column letters cross-checked against the 49-field order):
+
+| Col | Field | Notes |
+|---|---|---|
+| A | `"T"` (literal) | |
+| B | `n_trades` | matured trades count |
+| G | Σ `clean` | |
+| H | Σ `accrued` | |
+| I | Σ `dirty` | |
+| J | Σ `dv01` | |
+| Q, R | Σ `notional` (twice) | |
+| U, V, W | 0 | columns are always blank; sums are always 0 (sanity tripwire) |
+| AK | Σ `DA` (positive NPVs only) | |
+| AL | Σ `DL` (negative NPVs only) | |
+| AW | Σ `pv_fixed` | hedged-debt total |
+
+All other cells in the footer row are blank strings.
+
+### Template inputs feeding the prod CSV
+
+`_template.csv.sample` carries 13 new optional columns to the right of the
+existing 34 pricing columns. They are sourced 1:1 by the prod writer:
+`quantum_deal_number`, `oracle_entity_code`, `notional_currency`,
+`intercompany` (bool → Yes/No), `counterparty_name_quantum`,
+`current_counterparty`, `entity_name_quantum`, `reporting_party`,
+`counterparty_location`, `deal_date`, `netting_id`,
+`cash_flow_netting_allowed`, `position_netting_allowed`. Blank cells → blank
+output cells. `intercompany` parses via the same boolean rule as
+`pay_fixed` (`true`/`false`/`yes`/`no`/`1`/`0`). `deal_date` is the **trade
+date** (when the swap was struck), distinct from `start_date` (effective
+date) — the two typically differ by ~2 business days.
 
 ### `valdate_<val_date>_rundate_<run_date>/portfolio_<val_date>.xlsx` — the everyday view
 
@@ -273,7 +492,8 @@ F:\Projects - Github\Swaps\
 │   │   ├── base.py           # CurveLoader / FixingLoader / TradeLoader ABCs
 │   │   ├── excel.py
 │   │   └── dataframe.py
-│   ├── io_excel.py
+│   ├── io_excel.py           # portfolio + per-trade detail + debug workbooks
+│   ├── io_prod.py            # KPMG prod CSV (default output)
 │   ├── io_parquet.py
 │   ├── manifest.py           # run manifest writer
 │   ├── portfolio.py          # single-date runner (valdate_/rundate_ folder)
@@ -284,10 +504,11 @@ F:\Projects - Github\Swaps\
 │   └── trades/*.yaml
 ├── output/
 │   ├── valdate_<val_date>_rundate_<run_date>/
-│   │   ├── portfolio_<val_date>.xlsx
-│   │   ├── detail/<trade_id>.xlsx
-│   │   ├── debug/<trade_id>_debug.xlsx  (when --debug)
-│   │   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet
+│   │   ├── IRS_Valuation_<val_date>-00001.csv   (DEFAULT — always written)
+│   │   ├── portfolio_<val_date>.xlsx           (--debug only)
+│   │   ├── detail/<trade_id>.xlsx              (--debug only)
+│   │   ├── debug/<trade_id>_debug.xlsx         (--debug only)
+│   │   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet  (--debug only)
 │   │   └── manifest_<val_date>.json
 │   ├── batch_<UTCstamp>.log             (batch runs only)
 │   └── batch_<UTCstamp>.json            (batch runs only)
@@ -330,6 +551,46 @@ Tests live alongside the code in each block, not deferred.
 - Golden-master regression catches accidental numeric drift.
 - Pure CLI, no interactive prompts. Stdout logging. Non-zero exit on error. Fail-fast input validation. (All required for future server deployment.)
 - Run manifest (`manifest_<val_date>.json`) records `git_sha`, input file hashes, trade count, timings — written from day 1.
+
+### CLI flags (both `price_portfolio.py` and `price_portfolio_batch.py`)
+
+- **No flag (default)** — writes ONLY the prod CSV (see *Production CSV*
+  above). No portfolio workbook, no per-trade detail, no parquet, no debug.
+  This is the lean nightly-cloud-run mode.
+- **`--debug`** — writes EVERYTHING: prod CSV + portfolio workbook +
+  per-trade detail workbooks + per-trade debug workbooks + parquet. There is
+  no middleground flag (no separate `--detail` / `--portfolio-xlsx` /
+  `--parquet`); the choice is "lean prod feed" vs "full audit dump".
+- **Curve input mode** (mutually exclusive argparse group; default = `market_environment` path):
+  - `--pillar-dates` → `DatedCurveLoader` (rate-keyed dated pillars).
+  - `--pillar-dates-df` → `DatedDFCurveLoader` (DF-keyed dated pillars; bypasses `RateQuoting`).
+- **`--entity-rc <path>`** — Entity Reference Report CSV used to build the
+  Balance Sheet / PL CCID strings (cols AU / AV). Default
+  `entity/Entity_Reference_Report.csv`. File is optional: missing file → all
+  CCID cells emitted blank with a startup warning. Schema: header row
+  `Entity_Code,Default RC`.
+- **`-v` / `--verbose`** — toggles root logger level. **Default `ERROR`**
+  (cloud-friendly: only hard failures hit stdout; `manifest.warnings[]` still
+  records convention warnings, no-curve skips, and matured-trade notices so
+  the file record is complete). `-v` switches to `INFO` (per-trade timings,
+  run folder, "===== val_date X : run START =====" worker lines,
+  convention warnings, no-curve skip warnings, etc.). Applied to the parent
+  process and each per-date worker in batch.
+- **Exit code is always printed on the final stdout line**
+  (`exit_code=<n>`), regardless of `-v`, so a quiet ERROR-only cloud run
+  still surfaces it. Captures argparse's internal `SystemExit` too — a bad
+  or missing CLI argument still prints `exit_code=2`.
+
+### Exit codes (both scripts)
+
+| Code | Meaning |
+|---|---|
+| `0` | Success — all priced. `skipped(no-curve)` (weekend/holiday with no published curve) counts as success and does not page. |
+| `1` | Hard failure — uncaught exception, or a date errored entirely. |
+| `2` | CLI usage error — argparse default (bad/missing args, mutex violation). |
+| `3` | Partial — pricing completed but at least one trade errored (recorded in `manifest.errors[]`). |
+
+Codes are stable and intended for CI/CD branching (`retry on 3`, `page on 1`, `ignore 0`). POSIX-safe positive values in `0–125`; no negatives (Python wraps `−1` to `255`); avoid `126`/`127`/`128+N` (shell-reserved). Skipped dates intentionally do not change the exit code — silence (no run at all by the scheduled time) is what should page, monitored separately.
 
 ---
 
@@ -375,13 +636,20 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 
 ## Verification (v1 done criteria)
 
-1. `pytest -q` — all unit tests + golden-master green.
+1. `pytest -q` — all unit tests + golden-master green (236 passing as of
+   2026-05-20; includes 19 tests in `tests/test_io_prod.py` covering prod-CSV
+   layout, CME branching, intercompany rendering, footer sums).
 2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/valdate_<val_date>_rundate_<run_date>/`:
+   - `IRS_Valuation_<val_date>-00001.csv` (always — default output)
+   - `manifest_<val_date>.json`
+   With `--debug` also:
    - `portfolio_<val_date>.xlsx` with four tabs
    - `detail/<trade_id>.xlsx` per trade
+   - `debug/<trade_id>_debug.xlsx` per trade
    - `parquet/*.parquet`
-   - `manifest_<val_date>.json`
-2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `valdate_/rundate_` folder per date plus `output/batch_<UTCstamp>.{log,json}`; non-zero exit only on real failures (`error`/`partial`) — dates with no published curve are reported as `skipped` (WARNING) and do not fail the run.
+2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` (or repeated `--val-date`) produces one `valdate_/rundate_` folder per date plus `output/batch_<UTCstamp>.{log,json}`; exit codes follow the standardized scheme (`0` ok/skipped, `1` hard error, `2` usage, `3` partial). Dates with no published curve are reported as `skipped` (WARNING) and stay at exit code `0`.
+2c. Curve-input alternates exercised: `--pillar-dates` (`sofr_<date>.csv` + `ff_<date>.csv`, rates) and `--pillar-dates-df` (`sofr_df_<date>.csv` + `ff_df_<date>.csv`, DFs) each price the same portfolio to numerically-equivalent DFs (verified by round-trip tests in `tests/test_dated_curve_loader.py` and `tests/test_dated_df_loader.py`).
+2d. `-v` toggles INFO progress vs the default WARNING-only output.
 3. Hand-check one swap:
    - `clean + accrued == dirty` to < 1e-8
    - Sum of fixed PV − sum of floating PV ≈ reported NPV (within sign convention)

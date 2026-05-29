@@ -63,14 +63,112 @@ def test_payment_delay_applied():
         assert p.payment_date == NY_FED.add_business_days(p.end, 2)
 
 
+# --- BBG First Payment Date override (first_period_accrual_end_date) --------
+def test_first_period_accrual_end_date_anchors_forward_with_front_stub():
+    # Effective 2026-04-02, maturity 2031-04-02, semi-annual.
+    # Anchor 2026-04-25 -> period 1 is short front stub 2026-04-02 -> 2026-04-25;
+    # later unadjusted ends step by 6M from the anchor (25th of Apr/Oct).
+    periods = generate_schedule(
+        effective_date=date(2026, 4, 2),
+        termination_date=date(2031, 4, 2),
+        frequency="6M",
+        calendar=NY_FED,
+        roll_convention="forward",
+        first_period_accrual_end_date=date(2026, 4, 25),
+    )
+    assert periods[0].unadjusted_start == date(2026, 4, 2)
+    assert periods[0].unadjusted_end == date(2026, 4, 25)
+    assert periods[1].unadjusted_start == date(2026, 4, 25)
+    assert periods[1].unadjusted_end == date(2026, 10, 25)
+    interior_days = {p.unadjusted_end.day for p in periods[1:-1]}
+    assert interior_days == {25}
+    assert periods[-1].unadjusted_end == date(2031, 4, 2)
+
+
+def test_anchor_overrides_eom_strict_calendar_day():
+    # Anchor on 4/30 with quarterly frequency and roll_convention="forward_eom":
+    # subsequent unadjusted ends are 7/30, 10/30, 1/30, 4/30, ... NEVER 2/28
+    # or 2/29 (EOM is overridden by the anchor per design).
+    periods = generate_schedule(
+        effective_date=date(2026, 1, 15),
+        termination_date=date(2028, 1, 15),
+        frequency="3M",
+        calendar=NY_FED,
+        roll_convention="forward_eom",
+        first_period_accrual_end_date=date(2026, 4, 30),
+    )
+    interior_ends = [p.unadjusted_end for p in periods[:-1]]
+    expected = [
+        date(2026, 4, 30),
+        date(2026, 7, 30),
+        date(2026, 10, 30),
+        date(2027, 1, 30),
+        date(2027, 4, 30),
+        date(2027, 7, 30),
+        date(2027, 10, 30),
+    ]
+    assert interior_ends == expected
+    assert periods[-1].unadjusted_end == date(2028, 1, 15)
+
+
+def test_anchor_outside_trade_range_raises():
+    with pytest.raises(ValueError, match="strictly between"):
+        generate_schedule(
+            effective_date=date(2026, 4, 2),
+            termination_date=date(2031, 4, 2),
+            frequency="6M",
+            calendar=NY_FED,
+            first_period_accrual_end_date=date(2031, 5, 1),
+        )
+
+
+def test_anchor_tiny_back_stub_collides_on_holiday_is_merged():
+    # Reproduces trade 19652363: anchor on 15th, maturity on 16th -> 1-day
+    # back stub at 2027-02-15 -> 2027-02-16, but 2027-02-15 is Presidents Day
+    # so it rolls onto 2027-02-16 (= maturity) under MFollowing. The 0-day
+    # period must be merged into the previous one.
+    warnings: list[str] = []
+    periods = generate_schedule(
+        effective_date=date(2024, 2, 16),
+        termination_date=date(2027, 2, 16),
+        frequency="3M",
+        calendar=NY_FED,
+        bus_day_adj="ModifiedFollowing",
+        first_period_accrual_end_date=date(2024, 5, 15),
+        schedule_warnings=warnings,
+    )
+    # No zero-length periods survive
+    assert all((p.end - p.start).days > 0 for p in periods)
+    # Last period extends all the way to the (adjusted) maturity
+    assert periods[-1].end == date(2027, 2, 16)
+    # Exactly one merge happened and was reported
+    assert len(warnings) == 1
+    assert "merged" in warnings[0].lower()
+
+
+def test_effective_and_maturity_collapse_to_same_day_raises():
+    # Pathological: effective Saturday rolls forward, maturity Sunday rolls
+    # backward to the same Monday under different conventions -> no schedule
+    # possible. This is contrived but the guard exists to surface it cleanly.
+    with pytest.raises(ValueError, match="no periods can be generated"):
+        generate_schedule(
+            effective_date=date(2026, 5, 30),    # Sat
+            termination_date=date(2026, 5, 31),  # Sun, before any Monday
+            frequency="3M",
+            calendar=NY_FED,
+            eff_date_adj="Following",
+            bus_day_adj="Following",
+        )
+
+
 def test_short_front_stub():
-    # Effective deliberately off-grid -> a short front stub should appear
+    # Backward generation (anchor = maturity) -> a short front stub appears
     periods = generate_schedule(
         effective_date=date(2026, 8, 1),
         termination_date=date(2031, 6, 15),
         frequency="1Y",
         calendar=NY_FED,
-        stub="ShortFront",
+        roll_convention="backward",
     )
     # First period shorter than subsequent ones
     first_days = (periods[0].end - periods[0].start).days

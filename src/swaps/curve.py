@@ -100,6 +100,80 @@ class ZeroCurve:
         self._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
         self._log_df = np.concatenate(([0.0], np.log(np.array([p.df for p in parsed], dtype=np.float64))))
 
+    @classmethod
+    def from_dated_pillars(
+        cls,
+        val_date: date,
+        pillars: dict[date, float],
+        rate_quoting: RateQuoting | None = None,
+        name: str = "",
+    ) -> "ZeroCurve":
+        """Build a ZeroCurve from explicit ``(pillar_date, zero_rate)`` pairs.
+
+        Bypasses the tenor->date conversion (no ``ON``/``TN``/``NM``/``NY``
+        parsing); the loader supplies pillar dates directly. ``Pillar.tenor``
+        is set to the ISO date string for traceability. All downstream
+        behaviour (DF interpolation, RateQuoting, dual-curve pricing) is
+        identical to the tenor-keyed constructor.
+        """
+        obj = cls.__new__(cls)
+        obj.val_date = val_date
+        obj.rate_quoting = rate_quoting or DEFAULT
+        obj.name = name
+        if not pillars:
+            raise ValueError("ZeroCurve requires at least one pillar")
+        parsed: list[Pillar] = []
+        for d, rate in pillars.items():
+            days = (d - val_date).days
+            if days <= 0:
+                raise ValueError(f"Pillar {d} <= val_date {val_date}")
+            df = obj.rate_quoting.rate_to_df(float(rate), days)
+            parsed.append(Pillar(tenor=d.isoformat(), pillar_date=d, days=days, zero_rate=float(rate), df=df))
+        parsed.sort(key=lambda p: p.days)
+        obj._pillars = tuple(parsed)
+        obj._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
+        obj._log_df = np.concatenate(([0.0], np.log(np.array([p.df for p in parsed], dtype=np.float64))))
+        return obj
+
+    @classmethod
+    def from_dated_dfs(
+        cls,
+        val_date: date,
+        pillars: dict[date, float],
+        name: str = "",
+    ) -> "ZeroCurve":
+        """Build a ZeroCurve directly from ``(pillar_date, DF)`` pairs.
+
+        Bypasses ``RateQuoting`` entirely -- the caller's data source has
+        already converted rates to discount factors under *its* convention.
+        ``Pillar.zero_rate`` is left as ``NaN`` because no quoting convention
+        was applied; ``Pillar.df`` carries the supplied value. All downstream
+        behaviour (log-linear DF interpolation, dual-curve pricing, DV01,
+        par rate) is identical.
+        """
+        import math as _math
+        obj = cls.__new__(cls)
+        obj.val_date = val_date
+        obj.rate_quoting = DEFAULT  # placeholder; not used to derive DFs here
+        obj.name = name
+        if not pillars:
+            raise ValueError("ZeroCurve requires at least one pillar")
+        parsed: list[Pillar] = []
+        for d, df in pillars.items():
+            days = (d - val_date).days
+            if days <= 0:
+                raise ValueError(f"Pillar {d} <= val_date {val_date}")
+            df = float(df)
+            if df <= 0.0:
+                raise ValueError(f"Pillar {d}: DF must be > 0 (got {df})")
+            parsed.append(Pillar(tenor=d.isoformat(), pillar_date=d, days=days,
+                                 zero_rate=_math.nan, df=df))
+        parsed.sort(key=lambda p: p.days)
+        obj._pillars = tuple(parsed)
+        obj._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
+        obj._log_df = np.concatenate(([0.0], np.log(np.array([p.df for p in parsed], dtype=np.float64))))
+        return obj
+
     @property
     def pillars(self) -> tuple[Pillar, ...]:
         return self._pillars
@@ -139,13 +213,27 @@ class ZeroCurve:
         return (df1 / df2 - 1.0) * 360.0 / days
 
     def bumped(self, delta: float) -> "ZeroCurve":
-        """Return a new ZeroCurve with all pillar zero rates shifted by ``delta``.
+        """Return a new ZeroCurve with a ``+delta`` parallel zero-rate shift.
 
         ``delta`` is in absolute terms (e.g. 1e-4 for a +1 bp parallel shift).
-        Used for DV01 / parallel sensitivities.
+        Used for DV01 / parallel sensitivities. Works for all three input
+        paths (tenor-keyed, dated rate pillars, dated DF pillars):
+
+          * If a pillar has a valid zero rate, shift it and re-quote via
+            ``self.rate_quoting`` (numerically identical to the old behaviour).
+          * If a pillar carries NaN zero rate (DF-direct input bypassed
+            ``RateQuoting``), apply the continuous-ACT/360 equivalent shift
+            at the DF level: ``DF_new = DF * exp(-delta * days / 360)``.
         """
-        bumped_pillars = {p.tenor: p.zero_rate + delta for p in self._pillars}
-        return ZeroCurve(self.val_date, bumped_pillars, self.rate_quoting, name=f"{self.name}+{delta}")
+        import math as _math
+        new_pillars: dict[date, float] = {}
+        for p in self._pillars:
+            if _math.isnan(p.zero_rate):
+                new_df = p.df * _math.exp(-delta * p.days / 360.0)
+            else:
+                new_df = self.rate_quoting.rate_to_df(p.zero_rate + delta, p.days)
+            new_pillars[p.pillar_date] = new_df
+        return ZeroCurve.from_dated_dfs(self.val_date, new_pillars, name=f"{self.name}+{delta}")
 
     def to_debug_frame(self) -> pd.DataFrame:
         """Pillar table — primary debug surface for the curve."""

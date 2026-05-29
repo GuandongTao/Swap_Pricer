@@ -42,6 +42,11 @@ def _run_one(
     write_detail: bool,
     write_parquet: bool,
     write_debug: bool,
+    pillar_dates: bool = False,
+    pillar_dates_df: bool = False,
+    verbose: bool = False,
+    entity_rc_path: str | None = None,
+    netting_db_path: str | None = None,
 ) -> BatchResult:
     """Process-pool worker. Builds loaders *inside* the worker so nothing
     unpicklable (curves, loader objects) crosses the process boundary."""
@@ -49,8 +54,11 @@ def _run_one(
     import logging as _logging
     import sys as _sys
 
+    from swaps.io_prod import load_entity_rc
+    from swaps.netting_db import load_netting_db
     from swaps.loaders import CombinedTradeLoader
     from swaps.loaders.csv_trades import CsvTradeLoader
+    from swaps.loaders.dated import DatedCurveLoader, DatedDFCurveLoader
     from swaps.loaders.excel import ExcelCurveLoader, ExcelFixingLoader
     from swaps.loaders.yaml_trades import YamlTradeLoader
     from swaps.portfolio import Portfolio
@@ -60,7 +68,7 @@ def _run_one(
     # (child processes don't inherit the parent's logging config). Lines are
     # prefixed with the val_date so parallel workers stay attributable.
     _logging.basicConfig(
-        level=_logging.INFO, stream=_sys.stdout,
+        level=_logging.INFO if verbose else _logging.ERROR, stream=_sys.stdout,
         format=f"%(asctime)s %(levelname)s [val={val_date}] %(message)s",
     )
     _wlog = _logging.getLogger(f"batch.{val_date}")
@@ -68,20 +76,34 @@ def _run_one(
 
     dd = Path(data_dir)
     try:
+        if pillar_dates_df:
+            curve_loader = DatedDFCurveLoader(dd / "curves")
+        elif pillar_dates:
+            curve_loader = DatedCurveLoader(dd / "curves")
+        else:
+            curve_loader = ExcelCurveLoader(dd / "curves")
         pf = Portfolio(
-            ExcelCurveLoader(dd / "curves"),
+            curve_loader,
             ExcelFixingLoader(dd / "fixings" / fixing_file),
             CombinedTradeLoader(
                 YamlTradeLoader(dd / "trades"),
                 CsvTradeLoader(dd / "trades"),
             ),
         )
+        entity_rc = load_entity_rc(entity_rc_path) if entity_rc_path else {}
+        netting_db = None
+        if netting_db_path and Path(netting_db_path).exists():
+            netting_db = load_netting_db(netting_db_path)
         _, manifest = pf.run(
             val_date,
             out_dir=out_dir,
+            write_prod=True,
+            write_portfolio_xlsx=write_debug,
             write_detail=write_detail,
             write_parquet=write_parquet,
             write_debug=write_debug,
+            entity_rc=entity_rc,
+            netting_db=netting_db,
         )
         _wlog.info("===== val_date %s : run DONE (status=%s) =====",
                    val_date, manifest.status)
@@ -127,9 +149,14 @@ def run_batch(
     out_dir: str | Path = "output",
     fixing_file: str = "fixing_cail_USD-FEDFUNDS-ON.csv",
     max_workers: int | None = None,
-    write_detail: bool = True,
-    write_parquet: bool = True,
+    write_detail: bool = False,
+    write_parquet: bool = False,
     write_debug: bool = False,
+    pillar_dates: bool = False,
+    pillar_dates_df: bool = False,
+    verbose: bool = False,
+    entity_rc_path: str | Path | None = None,
+    netting_db_path: str | Path | None = None,
 ) -> list[BatchResult]:
     """Price ``val_dates`` in parallel. Returns one ``BatchResult`` per date,
     ordered by ``val_date``. Each date's outputs land in
@@ -140,6 +167,8 @@ def run_batch(
         raise ValueError("run_batch requires at least one valuation date")
     data_dir = str(Path(data_dir))
     out_dir = str(Path(out_dir))
+    entity_rc_path_str = str(Path(entity_rc_path)) if entity_rc_path else None
+    netting_db_path_str = str(Path(netting_db_path)) if netting_db_path else None
     results: list[BatchResult] = []
 
     _log.info(
@@ -151,6 +180,8 @@ def run_batch(
             ex.submit(
                 _run_one, d, data_dir, out_dir, fixing_file,
                 write_detail, write_parquet, write_debug,
+                pillar_dates, pillar_dates_df, verbose,
+                entity_rc_path_str, netting_db_path_str,
             ): d
             for d in dates
         }

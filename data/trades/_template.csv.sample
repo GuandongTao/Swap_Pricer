@@ -1,45 +1,170 @@
 # Batch trade template (CSV). Drop a copy of this file (renamed without ".sample")
 # into data/trades/ and the pricer will load every row as a trade.
 #
-# Columns:
-#   trade_id                  unique label, e.g. SWAP_TEST_001
-#   notional                  positive number, e.g. 500000000
-#   pay_fixed                 true = pay fixed/receive float, false = receive fixed/pay float
-#   fixed_rate                decimal, e.g. 0.0541 = 5.41%
-#   start_date                ISO date, first accrual day
-#   maturity_date             ISO date, last accrual end (final pay = maturity + payment_delay_bdays)
-#   fixed_frequency           1Y / 6M / 3M / 1M / 1W / 1D
-#   fixed_daycount            ACT/360 (default) | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
-#   floating_frequency        blank => same as fixed_frequency (standard OIS); set e.g. 3M for cross-frequency
-#   floating_daycount         same options as fixed_daycount; usually ACT/360
-#   floating_spread           decimal, e.g. 0.0025 = 25 bp; usually 0
-#   fixed_principal_exchange  none (default) | start | end | both -- principal flows on fixed leg
-#   floating_principal_exchange  same options -- principal flows on floating leg
-#                                  start = -notional at start_date (paid out)
-#                                  end   = +notional at final payment date (received)
-#   fixing_calendar           NY_FED (only one supported today)
-#   payment_calendar          NY_FED
-#   payment_delay_bdays       int, business-day lag between accrual end and cash payment
-#   payment_delay_bdays       shared default; per-leg overrides below take precedence when set
-#   fixed_payment_delay_bdays    (optional col) int; blank => payment_delay_bdays
-#   floating_payment_delay_bdays (optional col) int; blank => payment_delay_bdays
-#   lockout_bdays             int, business days of frozen fixings at the period end
-#   business_day_convention   ModifiedFollowing (default) | Following | Preceding | ModifiedPreceding | Nearest | None | NoAdjust
-#                                global fallback for the per-leg rolls below
+# NOTE: comment lines below contain NO commas on purpose so this file opens
+# as a clean table in Excel. The real header row is the line just above
+# the SWAP_TEST rows; comment lines sit in column A.
 #
-#   --- Per-leg roll conventions (optional; blank => fall back to business_day_convention) ---
-#   fixed_spot_roll           rolls the unadjusted effective/start date
-#   fixed_accrual_roll        rolls each unadjusted accrual end on the fixed schedule
-#   fixed_pay_roll            rolls each unadjusted payment date on the fixed leg
-#   floating_accrual_roll     rolls each unadjusted accrual end on the floating schedule
-#   floating_pay_roll         rolls each unadjusted payment date on the floating leg
-#   floating_fixing_roll      rolls the lookback-shifted fixing date; default Preceding
-#   floating_fixing_lag_bdays int business-day lookback for fixings; 0 = rate set in advance
+# Every CONVENTION is per-leg (Bloomberg vocabulary). Only economic terms are
+# shared. Column order does not matter (matched by name); an omitted column
+# behaves exactly like a blank cell -> the default below applies.
+#
+# === SECTION 1: PRICING INPUTS (used by the pricer) ===
+#
+# Columns:
+#   --- Required (economic terms; must be present; no default) ---
+#   trade_id                  unique label e.g. SWAP_TEST_001 (AMEX scheme: trailing id only)
+#   notional                  positive number e.g. 500000000
+#   pay_fixed                 true = pay fixed/receive float | false = receive fixed/pay float
+#   fixed_rate                decimal e.g. 0.0541 = 5.41%
+#   start_date                ISO date | effective / first accrual day
+#   maturity_date             ISO date | termination / last accrual end (must be > start_date)
+#   fixed_frequency           1Y / 6M / 3M / 1M / 1W / 1D
+#   fixed_daycount            ACT/360 | ACT/365F | 30/360 | 30E/360 | ACT/ACT-ISDA
+#
+#   --- Fixed leg conventions (optional) ---
+#   fixed_bus_day_adj         "Bus Day Adj": roll for accrual-end dates; <roll>; blank => ModifiedFollowing
+#   fixed_eff_date_adj        "Eff Date Adj": roll for the effective date; <roll>; blank => fixed_bus_day_adj
+#   fixed_pay_date_adj        "Pay Date Adj" (BBG-derived); <roll>; blank => fixed_bus_day_adj
+#   fixed_adjust              acc_and_pay = accrue on adjusted dates (default)
+#                             pay         = accrue on UNADJUSTED dates; adjust pay date only
+#                             none        = adjust nothing
+#   fixed_roll_convention     forward / forward_eom (from effective; stub at back)
+#                             backward / backward_eom (from maturity; stub at front)
+#                             *_eom snaps month-end-anchored periods to month-end; blank => forward_eom
+#   fixed_payment_delay_bdays int >=0 business-day lag accrual end -> cash; blank => 0
+#   fixed_principal_exchange  none (default) | start | end | both
+#                               start = -notional at start_date; end = +notional at final pay
+#   fixed_calculation_calendar   NY_FED (only one registered); blank => NY_FED
+#   fixed_payment_calendar       NY_FED; blank => fixed_calculation_calendar (BBG-derived)
+#   fixed_first_period_accrual_end_date   ISO date | optional. BBG "First Payment Date"
+#                               override: the END of accrual period 1 (= start of period 2).
+#                               Subsequent unadjusted accrual ends step forward by
+#                               fixed_frequency from this date in strict calendar-day
+#                               arithmetic (4/30 -> 7/30 -> 10/30 -> 1/30; never snapping
+#                               to month-end). Must lie strictly between start_date and
+#                               maturity_date. When set fixed_roll_convention is ignored
+#                               (anchor dictates direction = forward and roll day);
+#                               fixed_bus_day_adj still adjusts each boundary independently.
+#                               Blank => default schedule (no anchor).
+#
+#   --- Floating leg conventions (optional) ---
+#   floating_frequency        1Y/6M/3M/1M/1W/1D; blank => fixed_frequency (standard OIS)
+#   floating_daycount         same options as fixed_daycount; blank => ACT/360
+#   floating_spread           decimal e.g. 0.0025 = 25 bp; excluded from compounding; blank => 0
+#   floating_bus_day_adj      "Bus Day Adj" for floating; <roll>; blank => ModifiedFollowing
+#   floating_eff_date_adj     "Eff Date Adj"; <roll>; blank => floating_bus_day_adj
+#   floating_pay_date_adj     "Pay Date Adj" (BBG-derived); <roll>; blank => floating_bus_day_adj
+#   floating_rst_bus_day_adj  "Rst Bus Day Adj": roll for the (lag-shifted) fixing date;
+#                               <roll>; blank => floating_bus_day_adj
+#   floating_adjust           acc_and_pay (default) | pay | none (same meaning as fixed_adjust)
+#   floating_roll_convention  forward / forward_eom / backward / backward_eom; blank => forward_eom
+#   floating_payment_delay_bdays int >=0; blank => 0
+#   floating_reset_lag_bdays  int >=0 business-day lookback; 0 = in-arrears OIS (BBG-derived)
+#   floating_lockout_bdays    int >=0 frozen fixings at period end; blank => 0
+#   floating_principal_exchange  none (default) | start | end | both
+#   floating_calculation_calendar  NY_FED; blank => NY_FED
+#   floating_fixing_calendar       NY_FED | the reset/fixing calendar; blank => NY_FED
+#   floating_payment_calendar      NY_FED; blank => floating_calculation_calendar (BBG-derived)
+#   floating_first_period_accrual_end_date  ISO date | optional. Same semantics as
+#                               fixed_first_period_accrual_end_date but for the floating
+#                               leg. The two legs are independent: set one without the
+#                               other to match a BBG ticket where only one leg uses the
+#                               First Payment Date override.
 #
 #   description               free text (optional)
 #
+#   --- Optional holiday-extras columns (add by name only if needed) ---
+#   fixed/floating calculation or payment calendar_extras and
+#   floating_fixing_calendar_extras : semicolon- or comma-separated ISO dates of extra closures
+#   ..._extras_file : path to a CSV/TXT/XLSX list of extra closure dates
+#
+#   <roll> = None / NoAdjust / Following / ModifiedFollowing / Preceding /
+#            ModifiedPreceding / Nearest
+#
+# BLOOMBERG PARITY: leave *_pay_date_adj / *_payment_calendar /
+#   floating_rst_bus_day_adj / floating_reset_lag_bdays blank and the row
+#   reproduces a Bloomberg ticket exactly (Bloomberg derives them the same way).
+#   For tickets that use BBG's "First Payment Date" override fill in
+#   fixed_first_period_accrual_end_date and/or floating_first_period_accrual_end_date
+#   with the same ISO date(s) shown on the ticket; leave blank otherwise.
+#
+# VALIDATION: invalid roll_convention or adjust; maturity<=start; an
+#   unregistered calendar; an unsupported reset/payment type; or a
+#   *_first_period_accrual_end_date outside (start_date maturity_date) => HARD
+#   ERROR (row rejected). adjust=acc_and_pay with an EOM roll or a 30/360
+#   day-count => WARNING only (still prices; logged to manifest.warnings).
+#
+# === SECTION 2: PRODUCTION-OUTPUT REFERENCE FIELDS ===
+#
+# These columns feed the prod CSV (IRS_Valuation_<val_date>-00001.csv) that is
+# written by default by every run. They are NOT used by pricing; an empty
+# cell writes a blank cell in the output. They sit to the RIGHT of the
+# pricing columns; the existing 34 columns above are unchanged.
+#
+# OVERLAP NOTE: maturity_date and notional are already in Section 1 and feed
+# the output columns "Maturity Date" / "Notional 1 Amount" / "Notional 1
+# Amount USD" (both notional columns carry the same value since the book is
+# USD-only). No duplicate field is needed.
+#
+#   --- Trade-reference fields (sourced 1:1 from this row) ---
+#   quantum_deal_number          Quantum Unique Trade ID
+#   oracle_entity_code           Oracle Entity Code (4-digit, e.g. 1000) --
+#                                  must match an Entity_Code in the Entity
+#                                  Reference Report. ALSO used to build the
+#                                  Balance Sheet CCID and PL/OCI CCID (cols
+#                                  AU/AV) by looking up the Default RC from
+#                                  entity/Entity_Reference_Report.csv. If this
+#                                  field is blank or the entity is not in the
+#                                  lookup table, both CCID cells are emitted
+#                                  blank (no half-built id is ever written).
+#   notional_currency            Notional currency of the trade (e.g. USD)
+#   intercompany                 true/false -> rendered as Yes/No in the output
+#                                  (same boolean parsing as pay_fixed)
+#   counterparty_name_quantum    Counterparty Name as per Quantum
+#   current_counterparty         Legal Name of the Counterparty.
+#                                  IMPORTANT: must be the EXACT string
+#                                    "CME Clearing House"
+#                                  (case- and whitespace-sensitive) for the
+#                                  trade to be flagged as CME-cleared. Anything
+#                                  else (including "CME" or "cme clearing
+#                                  house") routes to the Bank / OTC-Bilateral
+#                                  branch in the output.
+#   entity_name_quantum          Amex Entity Abbreviation with Oracle Entity Code
+#   reporting_party              Legal Name of the Amex Entity
+#   counterparty_location        Country / domicile of counterparty (US / UK / ...)
+#   deal_date                    Trade date (ISO) -- when the swap was struck.
+#                                  Distinct from start_date (effective date);
+#                                  the two typically differ by ~2 business days.
+#   netting_id                   Key into entity/Netting_Database.csv. The
+#                                  netting DB is the source of truth for the
+#                                  per-netting-group fields the prod CSV needs
+#                                  (Cash Flow Netting Allowed, Position Netting
+#                                  Allowed, Netting Entity); they are looked up
+#                                  by this id at emit time and are NOT input
+#                                  columns here. A non-blank netting_id that is
+#                                  missing from the DB is a hard input error.
+#
+# Output fields that are NOT sourced from this template (the prod writer fills
+# them itself):
+#   * As of Date  <- val_date passed on the CLI
+#   * Clean / Accrued / NPV / DV01 / Hedged Debt MTM  <- pricer output
+#   * Valuation Currency = "USD"; Product = "IR"; HCL Type = "Interest Rate Swap"
+#   * Collateral Level = "Fully Collateralized"
+#   * Sub-Product2, Counterparty Type, QCCP / Cleared / Cash-Settled CCP
+#     indicators  <- branched off current_counterparty == "CME Clearing House"
+#   * DA / DL / Asset Liability Tag  <- branched off the sign of NPV
+#   * Fields marked "Not Required" in the spec (Trade Reference Number,
+#     Internal Reference Number, Period Start/End/Payment dates, Pay Rec
+#     Status, Component Type, Coupon FV, Intrinsic Value FV, Time Value FV,
+#     InternalFacing-StreetFacing, Counterparty Code) are always written blank.
+#   * Balance Sheet CCID (AU) and PL/OCI CCID (AV) are NOT input fields --
+#     they are composed from oracle_entity_code + the Entity Reference Report
+#     lookup + the NPV-sign-driven natural account (Asset=192001 /
+#     Liability=392001 / PL=465012). See plan.md "CCID composition".
+#
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,floating_frequency,floating_daycount,floating_spread,fixed_principal_exchange,floating_principal_exchange,fixing_calendar,payment_calendar,payment_delay_bdays,lockout_bdays,business_day_convention,fixed_spot_roll,fixed_accrual_roll,fixed_pay_roll,floating_accrual_roll,floating_pay_roll,floating_fixing_roll,floating_fixing_lag_bdays,description
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,,ACT/360,0,none,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,5Y pay-float at 5.41% fixed (float freq blank => same as fixed 1M)
-SWAP_TEST_002,250000000,true,0.0380,2026-04-01,2036-04-01,1Y,ACT/360,3M,ACT/360,0,end,none,NY_FED,NY_FED,2,0,ModifiedFollowing,,,,,,,,10Y cross-frequency: 1Y fixed vs 3M float + principal back on fixed leg
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,,ACT/360,0.0025,both,both,NY_FED,NY_FED,2,2,ModifiedFollowing,Following,ModifiedFollowing,Following,ModifiedFollowing,Following,Preceding,2,2Y with all rolls customised + 2-BD fixing lookback
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003

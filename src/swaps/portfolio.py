@@ -41,7 +41,10 @@ import pandas as pd
 from .curve import ZeroCurve
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
+from .io_prod import prod_filename, write_prod_csv
+from .io_prod_netting import netting_filename, write_netting_csv
 from .loaders.base import CurveLoader, FixingLoader, TradeLoader
+from .netting_db import NettingRow
 from .manifest import RunManifest
 from .market_data import MarketData
 from .pricer import SwapPricer, SwapValuation
@@ -65,9 +68,13 @@ class Portfolio:
         self,
         val_date: date,
         out_dir: str | Path = "output",
-        write_detail: bool = True,
-        write_parquet: bool = True,
+        write_detail: bool = False,
+        write_parquet: bool = False,
         write_debug: bool = False,
+        write_portfolio_xlsx: bool = False,
+        write_prod: bool = True,
+        entity_rc: dict[str, str] | None = None,
+        netting_db: dict[str, NettingRow] | None = None,
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -151,6 +158,9 @@ class Portfolio:
                         ok = True
                     else:
                         swap = build_swap(td, ff, fixings)
+                        for w in swap.meta.get("convention_warnings", []):
+                            _log.warning(w)
+                            manifest.warnings.append(w)
                         v = self.pricer.price(swap, md)
                         valuations.append(v)
                         swaps_by_id[v.trade_id] = swap
@@ -184,14 +194,53 @@ class Portfolio:
 
         # Excel and Parquet writers need a tz-naive datetime (UTC seconds).
         run_date = manifest.run_date.replace(tzinfo=None)
-        portfolio_path = out_dir / f"portfolio_{val_date.isoformat()}.xlsx"
-        _log.info("Writing portfolio workbook -> %s", portfolio_path)
-        with _timed(timings, "write_portfolio_xlsx"):
-            write_portfolio_workbook(
-                portfolio_path, valuations, {"SOFR": sofr, "FEDFUNDS": ff},
-                manifest.run_id, run_date, manifest.git_sha,
-            )
-        manifest.outputs["portfolio_xlsx"] = str(portfolio_path)
+
+        # Trade-defs keyed by their qualified id so the prod writer can pull
+        # per-trade reference data (counterparty, deal date, etc.) that isn't
+        # carried on SwapValuation.
+        trades_by_id = {td.trade_id: td for td in trades}
+
+        if write_prod:
+            prod_path = out_dir / prod_filename(val_date)
+            _log.info("Writing prod CSV -> %s", prod_path)
+            with _timed(timings, "write_prod_csv"):
+                write_prod_csv(
+                    prod_path, trades_by_id, valuations, val_date,
+                    entity_rc=entity_rc, netting_db=netting_db,
+                )
+            manifest.outputs["prod_csv"] = str(prod_path)
+            # IRS Netting feed: same gating as IRS Valuation. Requires both the
+            # netting DB (per-netting-id fields) and the entity_rc lookup
+            # (CCID RC). If either is missing, skip with a warning rather than
+            # failing the whole run -- the valuation feed is the primary
+            # deliverable.
+            if netting_db is not None and entity_rc:
+                netting_path = out_dir / netting_filename(val_date)
+                _log.info("Writing netting CSV -> %s", netting_path)
+                with _timed(timings, "write_netting_csv"):
+                    write_netting_csv(
+                        netting_path, trades_by_id, valuations, val_date,
+                        netting_db=netting_db, entity_rc=entity_rc,
+                    )
+                manifest.outputs["netting_csv"] = str(netting_path)
+            else:
+                msg = (
+                    "IRS Netting CSV skipped: "
+                    f"netting_db={'present' if netting_db else 'missing'}, "
+                    f"entity_rc={'present' if entity_rc else 'missing'}."
+                )
+                _log.warning(msg)
+                manifest.warnings.append(msg)
+
+        if write_portfolio_xlsx:
+            portfolio_path = out_dir / f"portfolio_{val_date.isoformat()}.xlsx"
+            _log.info("Writing portfolio workbook -> %s", portfolio_path)
+            with _timed(timings, "write_portfolio_xlsx"):
+                write_portfolio_workbook(
+                    portfolio_path, valuations, {"SOFR": sofr, "FEDFUNDS": ff},
+                    manifest.run_id, run_date, manifest.git_sha,
+                )
+            manifest.outputs["portfolio_xlsx"] = str(portfolio_path)
 
         if write_detail:
             _log.info("Writing %d detail workbooks ...", len(valuations))

@@ -41,13 +41,47 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--end", default=None, help="Range end (inclusive, ISO).")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
+    p.add_argument(
+        "--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
+        help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
+             "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
+    )
+    p.add_argument(
+        "--netting-db", default=str(ROOT / "entity" / "Netting_Database.csv"),
+        help="Netting Database CSV (keyed by Netting ID). Source of truth for "
+             "Cash Flow / Position Netting Allowed flags and the Netting Entity "
+             "on both the IRS Valuation and IRS Netting feeds. Missing file -> "
+             "IRS Netting feed is skipped (warning recorded to manifest).",
+    )
     p.add_argument("--max-workers", type=int, default=None, help="Parallel worker processes (default: auto)")
-    p.add_argument("--no-detail", action="store_true", help="Skip per-trade detail workbooks")
-    p.add_argument("--no-parquet", action="store_true", help="Skip parquet outputs")
-    p.add_argument("--debug", action="store_true", help="Write per-trade debug workbooks")
+    p.add_argument(
+        "--debug", action="store_true",
+        help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
+             "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
+    )
+    curve_src = p.add_mutually_exclusive_group()
+    curve_src.add_argument(
+        "--pillar-dates", action="store_true",
+        help="Dated-pillars curve format: sofr_<val_date>.csv + ff_<val_date>.csv.",
+    )
+    curve_src.add_argument(
+        "--pillar-dates-df", action="store_true",
+        help="Dated-DFs curve format: sofr_df_<val_date>.csv + ff_df_<val_date>.csv "
+             "(col B is the DF; bypasses RateQuoting).",
+    )
+    p.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Show INFO-level progress in parent and workers (incl. "
+             "no-curve skips, convention warnings, matured-trade notices). "
+             "Default is ERROR-only -- warnings remain in manifest.warnings[] "
+             "but stay off stdout (cloud-pipeline friendly).",
+    )
     args = p.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
+    # Default is ERROR-only; -v upgrades to INFO. Warnings still land in
+    # each per-date manifest.warnings[] and the batch summary log.
+    level = logging.INFO if args.verbose else logging.ERROR
+    logging.basicConfig(level=level, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("price_portfolio_batch")
 
     dates = []
@@ -80,9 +114,14 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=args.data_dir,
         out_dir=args.out_dir,
         max_workers=args.max_workers,
-        write_detail=not args.no_detail,
-        write_parquet=not args.no_parquet,
+        write_detail=args.debug,
+        write_parquet=args.debug,
         write_debug=args.debug,
+        pillar_dates=args.pillar_dates,
+        pillar_dates_df=args.pillar_dates_df,
+        verbose=args.verbose,
+        entity_rc_path=args.entity_rc,
+        netting_db_path=args.netting_db,
     )
 
     for r in results:
@@ -95,11 +134,22 @@ def main(argv: list[str] | None = None) -> int:
             for e in r.errors:
                 log.error("%s: %s", r.val_date, e)
 
-    # Non-zero exit ONLY on real failures (error / partial). 'skipped' dates
-    # (no curve published for that day) are an expected warning, not a failure.
-    bad = [r for r in results if r.status in ("error", "partial")]
-    return 1 if bad else 0
+    # Exit codes: 0 ok/skipped; 1 any date errored; 3 partial-only (no errors).
+    # 'skipped' (no curve published) is a warning, not a failure.
+    if any(r.status == "error" for r in results):
+        return 1
+    if any(r.status == "partial" for r in results):
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Print the exit code unconditionally on the final stdout line so it is
+    # visible even at default ERROR-only logging. Argparse's internal
+    # SystemExit (bad/missing args) is captured too.
+    try:
+        _rc = main()
+    except SystemExit as _e:
+        _rc = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
+    print(f"exit_code={_rc}")
+    raise SystemExit(_rc)

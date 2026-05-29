@@ -1,4 +1,11 @@
-"""Build a Swap object from a TradeDef + MarketData."""
+"""Build a Swap object from a (Bloomberg-matched) TradeDef.
+
+Every convention is per-leg. Each leg builds its own schedule from its own
+calculation calendar, Eff/Bus/Pay Date Adj, roll convention and payment delay.
+Bloomberg-derived fields auto-sync: ``*_pay_date_adj`` blank -> that leg's
+``*_bus_day_adj``; ``*_payment_calendar`` blank -> that leg's
+``*_calculation_calendar``.
+"""
 
 from __future__ import annotations
 
@@ -15,14 +22,15 @@ from .loaders.calendar_extras import load_extra_holidays
 from .notional import ConstantNotional
 from .schedule import generate_schedule
 from .swap import Swap
+from .validation import validate_trade
 
-# Registered "base" calendars. Per-trade extras are added on top via USCalendar(extra_holidays=...).
+# Registered "base" calendars. Per-trade extras layer on top.
 _BASE_CALENDARS: dict[str, USCalendar] = {"NY_FED": NY_FED}
 
 
 def _build_calendar(base_name: str, extras: list[date], extras_file: str | None) -> USCalendar:
     try:
-        base = _BASE_CALENDARS[base_name.upper()]
+        base = _BASE_CALENDARS[(base_name or "NY_FED").upper()]
     except KeyError as e:
         raise ValueError(
             f"Unknown base calendar {base_name!r}; known: {list(_BASE_CALENDARS)}"
@@ -32,76 +40,87 @@ def _build_calendar(base_name: str, extras: list[date], extras_file: str | None)
         combined.extend(load_extra_holidays(extras_file))
     if not combined:
         return base
-    # Re-derive the underlying base holiday set and add our extras on top.
     base_holidays = base._holidays  # frozenset[date]
     return USCalendar(extra_holidays=set(base_holidays) | set(combined))
 
 
 def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swap:
-    fix_cal = _build_calendar(td.fixing_calendar, td.fixing_calendar_extras, td.fixing_calendar_extras_file)
-    pay_cal = _build_calendar(td.payment_calendar, td.payment_calendar_extras, td.payment_calendar_extras_file)
+    # Two-tier validation: raises on impossible combos, returns warnings for
+    # Bloomberg-grayed-out combos (recorded by the Portfolio runner).
+    convention_warnings = validate_trade(td)
 
-    # Per-leg roll overrides; empty string -> fall back to td.business_day_convention.
-    # The schedule (shared start/end dates) uses the FIXED leg's rolls, since accrual
-    # start/end live in both legs; floating's own pay_roll is honored at the pay-date
-    # rebuild below if it diverges from fixed.
-    def _r(v: str) -> str:
-        return v if v else td.business_day_convention
-
-    # Per-leg payment delay; None falls back to the shared payment_delay_bdays.
-    fixed_pd = (
-        td.fixed_payment_delay_bdays
-        if td.fixed_payment_delay_bdays is not None
-        else td.payment_delay_bdays
+    # --- Fixed leg calendars ---
+    fixed_calc_cal = _build_calendar(
+        td.fixed_calculation_calendar,
+        td.fixed_calculation_calendar_extras,
+        td.fixed_calculation_calendar_extras_file,
     )
-    float_pd = (
-        td.floating_payment_delay_bdays
-        if td.floating_payment_delay_bdays is not None
-        else td.payment_delay_bdays
+    fixed_pay_cal = _build_calendar(
+        td.fixed_payment_calendar or td.fixed_calculation_calendar,
+        td.fixed_payment_calendar_extras,
+        td.fixed_payment_calendar_extras_file,
+    )
+    # --- Floating leg calendars ---
+    float_calc_cal = _build_calendar(
+        td.floating_calculation_calendar,
+        td.floating_calculation_calendar_extras,
+        td.floating_calculation_calendar_extras_file,
+    )
+    float_fix_cal = _build_calendar(
+        td.floating_fixing_calendar,
+        td.floating_fixing_calendar_extras,
+        td.floating_fixing_calendar_extras_file,
+    )
+    float_pay_cal = _build_calendar(
+        td.floating_payment_calendar or td.floating_calculation_calendar,
+        td.floating_payment_calendar_extras,
+        td.floating_payment_calendar_extras_file,
     )
 
-    schedule = generate_schedule(
+    fixed_bda = td.fixed_bus_day_adj
+    float_bda = td.floating_bus_day_adj
+    float_freq = td.floating_frequency or td.fixed_frequency
+
+    fixed_sched_warnings: list[str] = []
+    fixed_schedule = generate_schedule(
         effective_date=td.start_date,
         termination_date=td.maturity_date,
         frequency=td.fixed_frequency,
-        calendar=fix_cal,
-        business_day_convention=td.business_day_convention,
-        payment_delay_bdays=fixed_pd,
-        payment_calendar=pay_cal,
-        spot_roll=_r(td.fixed_spot_roll),
-        accrual_roll=_r(td.fixed_accrual_roll),
-        pay_roll=_r(td.fixed_pay_roll),
+        calendar=fixed_calc_cal,
+        eff_date_adj=td.fixed_eff_date_adj or fixed_bda,
+        bus_day_adj=fixed_bda,
+        pay_date_adj=td.fixed_pay_date_adj or fixed_bda,
+        roll_convention=td.fixed_roll_convention,
+        payment_delay_bdays=td.fixed_payment_delay_bdays,
+        payment_calendar=fixed_pay_cal,
+        first_period_accrual_end_date=td.fixed_first_period_accrual_end_date,
+        schedule_warnings=fixed_sched_warnings,
     )
-    # Floating leg gets its own schedule whenever its payment frequency or
-    # accrual/pay rolls diverge from the fixed leg. Blank floating_frequency
-    # falls back to fixed_frequency (standard OIS: legs share periods).
-    float_freq = td.floating_frequency or td.fixed_frequency
-    fl_acc = _r(td.floating_accrual_roll)
-    fl_pay = _r(td.floating_pay_roll)
-    needs_float_schedule = (
-        float_freq != td.fixed_frequency
-        or float_pd != fixed_pd
-        or (fl_acc, fl_pay) != (_r(td.fixed_accrual_roll), _r(td.fixed_pay_roll))
+    float_sched_warnings: list[str] = []
+    float_schedule = generate_schedule(
+        effective_date=td.start_date,
+        termination_date=td.maturity_date,
+        frequency=float_freq,
+        calendar=float_calc_cal,
+        eff_date_adj=td.floating_eff_date_adj or float_bda,
+        bus_day_adj=float_bda,
+        pay_date_adj=td.floating_pay_date_adj or float_bda,
+        roll_convention=td.floating_roll_convention,
+        payment_delay_bdays=td.floating_payment_delay_bdays,
+        payment_calendar=float_pay_cal,
+        first_period_accrual_end_date=td.floating_first_period_accrual_end_date,
+        schedule_warnings=float_sched_warnings,
     )
-    if needs_float_schedule:
-        float_schedule = generate_schedule(
-            effective_date=td.start_date,
-            termination_date=td.maturity_date,
-            frequency=float_freq,
-            calendar=fix_cal,
-            business_day_convention=td.business_day_convention,
-            payment_delay_bdays=float_pd,
-            payment_calendar=pay_cal,
-            spot_roll=_r(td.fixed_spot_roll),
-            accrual_roll=fl_acc,
-            pay_roll=fl_pay,
-        )
-    else:
-        float_schedule = schedule
+    # Promote schedule-level merges into the trade's warning list so the
+    # Portfolio runner surfaces them in manifest.warnings.
+    convention_warnings += [f"{td.trade_id} (fixed leg schedule): {w}" for w in fixed_sched_warnings]
+    convention_warnings += [f"{td.trade_id} (floating leg schedule): {w}" for w in float_sched_warnings]
+
     notional = ConstantNotional(td.notional)
     fixed = FixedLeg(
-        schedule, notional, td.fixed_rate, get_daycount(td.fixed_daycount),
+        fixed_schedule, notional, td.fixed_rate, get_daycount(td.fixed_daycount),
         principal_exchange=td.fixed_principal_exchange,
+        adjust=td.fixed_adjust,
     )
     floating = OISFloatingLeg(
         schedule=float_schedule,
@@ -109,14 +128,15 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
         projection_curve=ff_curve,
         fixings=fixings,
         daycount=get_daycount(td.floating_daycount),
-        fixing_calendar=fix_cal,
-        payment_delay_bdays=float_pd,
-        lockout_bdays=td.lockout_bdays,
-        payment_calendar=pay_cal,
+        fixing_calendar=float_fix_cal,
+        payment_delay_bdays=td.floating_payment_delay_bdays,
+        lockout_bdays=td.floating_lockout_bdays,
+        payment_calendar=float_pay_cal,
         spread=td.floating_spread,
         principal_exchange=td.floating_principal_exchange,
-        fixing_roll=_r(td.floating_fixing_roll),
-        fixing_lag_bdays=td.floating_fixing_lag_bdays,
+        fixing_roll=td.floating_rst_bus_day_adj or float_bda,
+        fixing_lag_bdays=td.floating_reset_lag_bdays,
+        adjust=td.floating_adjust,
     )
     return Swap(
         trade_id=td.trade_id,
@@ -132,8 +152,13 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
             "floating_frequency": float_freq,
             "fixed_daycount": td.fixed_daycount,
             "floating_daycount": td.floating_daycount,
-            "fixed_payment_delay_bdays": fixed_pd,
-            "floating_payment_delay_bdays": float_pd,
+            "fixed_adjust": td.fixed_adjust,
+            "floating_adjust": td.floating_adjust,
+            "fixed_roll_convention": td.fixed_roll_convention,
+            "floating_roll_convention": td.floating_roll_convention,
+            "fixed_payment_delay_bdays": td.fixed_payment_delay_bdays,
+            "floating_payment_delay_bdays": td.floating_payment_delay_bdays,
+            "convention_warnings": convention_warnings,
             **td.meta,
         },
     )

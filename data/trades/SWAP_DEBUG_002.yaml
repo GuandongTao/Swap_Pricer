@@ -2,13 +2,14 @@ trade_id: SWAP_DEBUG_002
 description: "Hand-debug trade -- 7th-anchor variant. 500M, pay floating / receive 5.41% fixed, monthly periods rolling on the 7th, 3 BD pay delay (weekends skipped), fixings 2026-03-09 to 2035-10-07."
 
 notional: 500000000
+oracle_entity_code: "1001"     # keys into entity/Entity_Reference_Report.csv for CCID
 pay_fixed: false               # we pay floating, receive fixed
 fixed_rate: 0.0541
 
 start_date: 2026-03-09         # first accrual day (effective)
 maturity_date: 2035-11-07      # last accrual end; principal + final coupon settle at maturity + 3 BD
 
-fixed_frequency: 1M            # monthly periods, rolling on the 7th (ModFollowing skip-weekend)
+fixed_frequency: 1M            # monthly periods, rolling on the 7th (backward from maturity)
 fixed_daycount: 30/360
 floating_daycount: ACT/360
 floating_spread: 0.0
@@ -17,9 +18,10 @@ floating_spread: 0.0
 fixed_principal_exchange: end
 floating_principal_exchange: end
 
-fixing_calendar: NY_FED
-payment_calendar: NY_FED
-business_day_convention: ModifiedFollowing
+fixed_bus_day_adj: ModifiedFollowing
+fixed_roll_convention: backward
+fixed_payment_delay_bdays: 3
 
-payment_delay_bdays: 3
-lockout_bdays: 0
+floating_bus_day_adj: ModifiedFollowing
+floating_roll_convention: backward
+floating_payment_delay_bdays: 3

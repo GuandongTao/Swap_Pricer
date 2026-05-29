@@ -58,7 +58,10 @@ def test_trade_loader_loads_all_samples(loaders):
 def test_portfolio_runner_produces_all_outputs(loaders, tmp_path):
     cl, fl, tl = loaders
     pf = Portfolio(cl, fl, tl)
-    valuations, manifest = pf.run(date(2026, 3, 31), out_dir=tmp_path)
+    valuations, manifest = pf.run(
+        date(2026, 3, 31), out_dir=tmp_path,
+        write_portfolio_xlsx=True, write_detail=True, write_parquet=True,
+    )
     assert manifest.status == "ok"
     assert len(valuations) >= 1
     trade_ids = {v.trade_id for v in valuations}
@@ -89,7 +92,9 @@ def test_portfolio_invariants(loaders, tmp_path):
 def test_summary_parquet_has_identifying_columns(loaders, tmp_path):
     cl, fl, tl = loaders
     pf = Portfolio(cl, fl, tl)
-    _, manifest = pf.run(date(2026, 3, 31), out_dir=tmp_path, write_detail=False)
+    _, manifest = pf.run(
+        date(2026, 3, 31), out_dir=tmp_path, write_detail=False, write_parquet=True,
+    )
     from pathlib import Path
     df = pd.read_parquet(Path(manifest.outputs["run_dir"]) / "parquet" / "summary.parquet")
     for col in ("run_id", "val_date", "run_date", "git_sha", "trade_id"):
@@ -103,6 +108,8 @@ def test_batch_runner_per_date_folders(tmp_path):
     # One date with a curve file (ok) + one without (no curve -> skipped,
     # a warning, not an error; must not crash the batch).
     from pathlib import Path
+    # write_debug=True so the batch worker writes the portfolio.xlsx the
+    # assertion below checks (default no-flag run only writes the prod CSV).
     results = run_batch(
         [date(2026, 3, 31), date(2099, 1, 2)],
         data_dir=ROOT / "data",
@@ -110,6 +117,7 @@ def test_batch_runner_per_date_folders(tmp_path):
         max_workers=2,
         write_detail=False,
         write_parquet=False,
+        write_debug=True,
     )
     by_date = {r.val_date: r for r in results}
     assert [r.val_date for r in results] == [date(2026, 3, 31), date(2099, 1, 2)]

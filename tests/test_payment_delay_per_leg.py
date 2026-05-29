@@ -1,8 +1,7 @@
-"""Separate payment delay for the fixed vs floating leg.
+"""Per-leg payment delay (Bloomberg schema: no shared payment_delay field).
 
-`fixed_payment_delay_bdays` / `floating_payment_delay_bdays` each fall back to
-the shared `payment_delay_bdays` when left None, so existing trades are
-unchanged.
+`fixed_payment_delay_bdays` / `floating_payment_delay_bdays` are independent
+ints (default 0). Payment date is based on the unadjusted period end.
 """
 
 from datetime import date
@@ -29,7 +28,7 @@ def _curve(rate: float = 0.04, name: str = "") -> ZeroCurve:
     )
 
 
-def _td(**ov) -> TradeDef:
+def _swap(**ov):
     base = dict(
         trade_id="X", notional=10_000_000, pay_fixed=True, fixed_rate=0.04,
         start_date=date(2026, 6, 15), maturity_date=date(2031, 6, 15),
@@ -39,45 +38,37 @@ def _td(**ov) -> TradeDef:
     return build_swap(TradeDef(**base), _curve(0.04, "FF"), FixingHistory())
 
 
-def test_shared_delay_applies_to_both_legs_by_default():
-    swap = _td(payment_delay_bdays=2)
+def test_default_zero_delay_both_legs_equal_payment_dates():
+    swap = _swap()
     fx, fl = swap.fixed.schedule[-1], swap.floating.schedule[-1]
     assert fx.payment_date == fl.payment_date
-    assert swap.meta["fixed_payment_delay_bdays"] == 2
-    assert swap.meta["floating_payment_delay_bdays"] == 2
+    assert swap.meta["fixed_payment_delay_bdays"] == 0
+    assert swap.meta["floating_payment_delay_bdays"] == 0
 
 
-def test_per_leg_override_diverges_payment_dates():
-    swap = _td(
-        payment_delay_bdays=2,
-        fixed_payment_delay_bdays=0,
-        floating_payment_delay_bdays=5,
-    )
-    last_end = swap.fixed.schedule[-1].end
+def test_per_leg_delay_diverges_payment_dates():
+    swap = _swap(fixed_payment_delay_bdays=0, floating_payment_delay_bdays=5)
+    last_uend = swap.fixed.schedule[-1].unadjusted_end  # 2031-06-15
     fx_pay = swap.fixed.schedule[-1].payment_date
     fl_pay = swap.floating.schedule[-1].payment_date
-    # Fixed: no delay -> pay == rolled accrual end. Floating: +5 BD beyond fixed.
-    assert fx_pay == last_end
-    assert fl_pay == NY_FED.add_business_days(fx_pay, 5)
+    # Fixed: 0 BD delay -> pay = roll(unadjusted end). Floating: +5 BD.
+    assert fl_pay == NY_FED.add_business_days(
+        NY_FED.add_business_days(last_uend, 0), 5
+    )
     assert fl_pay > fx_pay
     assert swap.meta["fixed_payment_delay_bdays"] == 0
     assert swap.meta["floating_payment_delay_bdays"] == 5
 
 
-def test_only_floating_override_set_fixed_uses_shared():
-    swap = _td(payment_delay_bdays=2, floating_payment_delay_bdays=0)
-    # Fixed falls back to shared 2; floating explicitly 0 -> fixed pays later.
+def test_only_fixed_delay_set():
+    swap = _swap(fixed_payment_delay_bdays=2)
     assert swap.meta["fixed_payment_delay_bdays"] == 2
     assert swap.meta["floating_payment_delay_bdays"] == 0
     assert swap.fixed.schedule[-1].payment_date > swap.floating.schedule[-1].payment_date
 
 
 def test_invariants_hold_with_split_delays():
-    swap = _td(
-        payment_delay_bdays=2,
-        fixed_payment_delay_bdays=0,
-        floating_payment_delay_bdays=5,
-    )
+    swap = _swap(fixed_payment_delay_bdays=0, floating_payment_delay_bdays=5)
     md = MarketData(VAL, _curve(0.045, "SOFR"), _curve(0.04, "FF"), FixingHistory())
     v = SwapPricer().price(swap, md)
     assert v.clean + v.accrued == pytest.approx(v.dirty, abs=1e-8)
