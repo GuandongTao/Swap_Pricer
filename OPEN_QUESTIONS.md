@@ -24,8 +24,8 @@ KPMG's preference once a sample file is reviewed end-to-end.
 ## Q3a (note, not a question) — Source of truth for Netting Entity
 
 Three places carry the same legal-entity code (1000 / 1021 / …):
-1. `entity/Netting_Database.csv` — column "Netting Entity"
-2. `entity/Entity_Reference_Report.csv` — entity rows
+1. `data/entity/Netting_Database.csv` — column "Netting Entity"
+2. `data/entity/Entity_Reference_Report.csv` — entity rows
 3. Per-trade `oracle_entity_code` in the input CSV
 
 All three are supposed to agree. For the netting output:

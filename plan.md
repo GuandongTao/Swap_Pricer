@@ -316,7 +316,7 @@ auto-increment scheme).
 | Counterparty Location | AI | `td.counterparty_location` |
 | HCL Type | AJ | constant `"Interest Rate Swap"` |
 | DA | AK | `npv` if `npv > 0` else blank |
-| DL | AL | `npv` if `npv < 0` else blank |
+| DL | AL | `abs(npv)` if `npv < 0` else blank |
 | Asset Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
 | Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"Yes"`, else `"No"` |
 | Deal Date | AQ | `td.deal_date` (trade date — distinct from `start_date`) |
@@ -343,7 +343,7 @@ CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reser
 ```
 
 9 dash-joined segments. Entity = `td.oracle_entity_code`. RC is looked up
-from the **Entity Reference Report** (`entity/Entity_Reference_Report.csv` by
+from the **Entity Reference Report** (`data/entity/Entity_Reference_Report.csv` by
 default; columns `Entity_Code, Default RC`). The trailing 6 segments are
 zero-padded defaults: `000000-0000-000000-000000-000000-0000`.
 
@@ -379,7 +379,7 @@ column letters cross-checked against the 49-field order):
 | Q, R | Σ `notional` (twice) | |
 | U, V, W | 0 | columns are always blank; sums are always 0 (sanity tripwire) |
 | AK | Σ `DA` (positive NPVs only) | |
-| AL | Σ `DL` (negative NPVs only) | |
+| AL | Σ `DL` (Σ \|npv\| over negative NPVs — positive total) | |
 | AW | Σ `pv_fixed` | hedged-debt total |
 
 All other cells in the footer row are blank strings.
@@ -566,7 +566,7 @@ Tests live alongside the code in each block, not deferred.
   - `--pillar-dates-df` → `DatedDFCurveLoader` (DF-keyed dated pillars; bypasses `RateQuoting`).
 - **`--entity-rc <path>`** — Entity Reference Report CSV used to build the
   Balance Sheet / PL CCID strings (cols AU / AV). Default
-  `entity/Entity_Reference_Report.csv`. File is optional: missing file → all
+  `data/entity/Entity_Reference_Report.csv`. File is optional: missing file → all
   CCID cells emitted blank with a startup warning. Schema: header row
   `Entity_Code,Default RC`.
 - **`-v` / `--verbose`** — toggles root logger level. **Default `ERROR`**
@@ -636,9 +636,9 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 
 ## Verification (v1 done criteria)
 
-1. `pytest -q` — all unit tests + golden-master green (236 passing as of
-   2026-05-20; includes 19 tests in `tests/test_io_prod.py` covering prod-CSV
-   layout, CME branching, intercompany rendering, footer sums).
+1. `pytest -q` — all unit tests + golden-master green (includes
+   `tests/test_io_prod.py` covering prod-CSV layout, CME branching,
+   intercompany rendering, footer sums).
 2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces, under `output/valdate_<val_date>_rundate_<run_date>/`:
    - `IRS_Valuation_<val_date>-00001.csv` (always — default output)
    - `manifest_<val_date>.json`

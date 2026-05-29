@@ -11,7 +11,7 @@ This script checks every link in that chain and prints a per-trade verdict.
 Run it on the machine where CCID is blank:
 
     python scripts/diagnose_ccid.py
-    python scripts/diagnose_ccid.py --trades data/trades --entity-rc entity/Entity_Reference_Report.csv
+    python scripts/diagnose_ccid.py --trades data/trades --entity-rc data/entity/Entity_Reference_Report.csv
 
 To also inspect an already-generated production feed (the "final report"),
 point --prod-csv at it — the script reports the actual AU/AV cells written:
@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Diagnose blank CCID output")
     p.add_argument("--trades", default=str(ROOT / "data" / "trades"),
                    help="trade CSV file or directory (default: data/trades)")
-    p.add_argument("--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
+    p.add_argument("--entity-rc", default=str(ROOT / "data" / "entity" / "Entity_Reference_Report.csv"),
                    help="Entity Reference Report CSV")
     p.add_argument("--prod-csv", default=None,
                    help="optional: a generated IRS Valuation feed CSV to inspect")

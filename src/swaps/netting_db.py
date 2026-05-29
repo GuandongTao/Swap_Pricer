@@ -1,6 +1,6 @@
 """Netting Database loader.
 
-Reads ``entity/Netting_Database.csv`` and exposes a ``netting_id -> NettingRow``
+Reads ``data/entity/Netting_Database.csv`` and exposes a ``netting_id -> NettingRow``
 lookup. The DB is the single source of truth for the per-netting-group
 fields that used to be carried on each trade row:
 

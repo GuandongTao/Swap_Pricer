@@ -181,7 +181,7 @@ class CsvTradeLoader(TradeLoader):
                 # netting_id is required on every input row: it keys both
                 # output feeds (IRS Valuation cols AR/AS/AT and IRS Netting
                 # aggregation) and must resolve to a row in
-                # entity/Netting_Database.csv. A blank cell is an input
+                # data/entity/Netting_Database.csv. A blank cell is an input
                 # error, not a "no netting" signal.
                 nid = row.get("netting_id")
                 if nid is None or (isinstance(nid, float) and pd.isna(nid)) \
@@ -190,7 +190,7 @@ class CsvTradeLoader(TradeLoader):
                         f"{origin}: trade_id {tid_s!r} has a blank "
                         f"netting_id. Every input row must supply a "
                         f"netting_id (key into "
-                        f"entity/Netting_Database.csv)."
+                        f"data/entity/Netting_Database.csv)."
                     )
                 out.append(_parse_row(row))
         return out

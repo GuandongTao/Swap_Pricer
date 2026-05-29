@@ -2,7 +2,7 @@ trade_id: SWAP_DEBUG_002
 description: "Hand-debug trade -- 7th-anchor variant. 500M, pay floating / receive 5.41% fixed, monthly periods rolling on the 7th, 3 BD pay delay (weekends skipped), fixings 2026-03-09 to 2035-10-07."
 
 notional: 500000000
-oracle_entity_code: "1001"     # keys into entity/Entity_Reference_Report.csv for CCID
+oracle_entity_code: "1001"     # keys into data/entity/Entity_Reference_Report.csv for CCID
 pay_fixed: false               # we pay floating, receive fixed
 fixed_rate: 0.0541
 

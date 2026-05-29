@@ -113,7 +113,7 @@ class TradeDef:
     reporting_party: str = ""
     counterparty_location: str = ""
     deal_date: date | None = None       # trade date (NOT effective / start_date)
-    # Key into entity/Netting_Database.csv; the cash-flow / position netting
+    # Key into data/entity/Netting_Database.csv; the cash-flow / position netting
     # allowed flags and the netting entity are looked up from the DB at
     # output-emit time, NOT carried per-trade.
     netting_id: str = ""

@@ -47,12 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output directory")
     p.add_argument(
-        "--entity-rc", default=str(ROOT / "entity" / "Entity_Reference_Report.csv"),
+        "--entity-rc", default=str(ROOT / "data" / "entity" / "Entity_Reference_Report.csv"),
         help="Entity Reference Report CSV (Entity_Code,Default RC) used to build "
              "Balance Sheet / PL CCIDs. Missing file -> CCID fields left blank.",
     )
     p.add_argument(
-        "--netting-db", default=str(ROOT / "entity" / "Netting_Database.csv"),
+        "--netting-db", default=str(ROOT / "data" / "entity" / "Netting_Database.csv"),
         help="Netting Database CSV (keyed by Netting ID). Source of truth for "
              "Cash Flow / Position Netting Allowed flags and the Netting Entity "
              "on both the IRS Valuation and IRS Netting feeds. Missing file -> "

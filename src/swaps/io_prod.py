@@ -192,7 +192,7 @@ def _row_for(
     is_cme = (td.current_counterparty == CME_NAME)
     npv = v.dirty
     da = npv if npv > 0 else None
-    dl = npv if npv < 0 else None
+    dl = -npv if npv < 0 else None
     if npv > 0:
         al_tag: str | None = "Asset"
     elif npv < 0:
@@ -262,7 +262,7 @@ def _row_for(
             raise ValueError(
                 f"{td.trade_id}: netting_id {nid!r} not found in netting "
                 f"database; every trade with a netting_id must resolve to "
-                f"a row in entity/Netting_Database.csv."
+                f"a row in data/entity/Netting_Database.csv."
             )
         nrow = netting_db[nid]
         cells[_COL["Cash Flow Netting Allowed"]] = nrow.cash_flow_netting_allowed

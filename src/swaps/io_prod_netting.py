@@ -158,7 +158,7 @@ def _row_for_group(
         raise ValueError(
             f"netting_id {g.netting_id!r} not found in netting database; "
             f"every trade with a netting_id must resolve to a row in "
-            f"entity/Netting_Database.csv."
+            f"data/entity/Netting_Database.csv."
         )
 
     netting_entity = (nrow.netting_entity or "").strip()

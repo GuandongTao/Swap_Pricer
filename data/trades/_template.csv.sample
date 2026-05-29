@@ -114,7 +114,7 @@
 #                                  Reference Report. ALSO used to build the
 #                                  Balance Sheet CCID and PL OCI CCID (cols
 #                                  AU/AV) by looking up the Default RC from
-#                                  entity/Entity_Reference_Report.csv. If this
+#                                  data/entity/Entity_Reference_Report.csv. If this
 #                                  field is blank or the entity is not in the
 #                                  lookup table, both CCID cells are emitted
 #                                  blank (no half-built id is ever written).
@@ -136,7 +136,7 @@
 #   deal_date                    Trade date (ISO) -- when the swap was struck.
 #                                  Distinct from start_date (effective date);
 #                                  the two typically differ by ~2 business days.
-#   netting_id                   Key into entity/Netting_Database.csv. The
+#   netting_id                   Key into data/entity/Netting_Database.csv. The
 #                                  netting DB is the source of truth for the
 #                                  per-netting-group fields the prod CSV needs
 #                                  (Cash Flow Netting Allowed, Position Netting

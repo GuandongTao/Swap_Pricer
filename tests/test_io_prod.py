@@ -175,7 +175,7 @@ def test_negative_npv_fills_dl(tmp_path):
     p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL)
     row = _read(p)[2]
     assert row[_COL["DA"]] == ""
-    assert float(row[_COL["DL"]]) == -300.0
+    assert float(row[_COL["DL"]]) == 300.0
     assert row[_COL["Asset Liability Tag"]] == "Liability"
 
 
@@ -206,7 +206,7 @@ def test_footer_sums_match_column_letter_spec(tmp_path):
     assert float(footer[_COL["Notional 1 Amount"]]) == pytest.approx(1_000_000_000.0)
     assert float(footer[_COL["Notional 1 Amount USD"]]) == pytest.approx(1_000_000_000.0)
     assert float(footer[_COL["DA"]]) == pytest.approx(110.0)        # only v1 positive
-    assert float(footer[_COL["DL"]]) == pytest.approx(-50.0)         # only v2 negative
+    assert float(footer[_COL["DL"]]) == pytest.approx(50.0)          # only v2 negative (abs)
     assert float(footer[_COL["Hedged Debt MTM"]]) == pytest.approx(3.0)
     # The three FV-columns are always blank; their sums must be 0.
     for fv in ("Coupon FV (Future Value)", "Intrinsic Value FV (Future Value)",
