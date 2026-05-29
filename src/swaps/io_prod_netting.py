@@ -7,7 +7,7 @@ aggregated into a single Position-Netting row. Spec lives in
 Layout
 ------
 
-    Row 1   5-cell HEADER:   H | <yyyymmdd run date (today)> | IRS_Netting_<val_date>-00001.csv | 00001 | KPMG
+    Row 1   5-cell HEADER:   H | <yyyymmdd val_date> | IRS_Netting_<val_date>-00001.csv | 00001 | KPMG
     Row 2   21 field-name column headers (see :data:`NETTING_FIELDS`)
     Row 3.. one row per netting_id present in the priced portfolio
     Last    FOOTER row: T | <n_trades> | blanks ... with column-letter sums at
@@ -253,7 +253,7 @@ def write_netting_csv(
 
     header_row = [
         "H",
-        date.today().strftime("%Y%m%d"),
+        val_date.strftime("%Y%m%d"),
         netting_filename(val_date),
         VERSION_STAMP,
         SOURCE_NAME,

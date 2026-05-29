@@ -119,7 +119,7 @@ def inspect_prod_csv(path: Path) -> None:
         print("  FAIL  feed file does not exist.")
         return
     bs_idx = PROD_FIELDS.index("Balance Sheet CCID")
-    pl_idx = PROD_FIELDS.index("PL/OCI CCID")
+    pl_idx = PROD_FIELDS.index("PL OCI CCID")
     npv_idx = PROD_FIELDS.index("Total Value (NPV)")
     with path.open("r", encoding="utf-8", newline="") as fh:
         rows = list(csv.reader(fh))
@@ -138,7 +138,7 @@ def inspect_prod_csv(path: Path) -> None:
         print(f"  {tid:<20} NPV={npv:<16} BS CCID={bs or '<blank>':<48} "
               f"PL CCID={pl or '<blank>'}")
     n = len(trade_rows)
-    print(f"\n  {n_bs}/{n} rows have Balance Sheet CCID, {n_pl}/{n} have PL/OCI CCID.")
+    print(f"\n  {n_bs}/{n} rows have Balance Sheet CCID, {n_pl}/{n} have PL OCI CCID.")
     if n_pl == 0:
         print("  PL CCID blank on every row -> the run did not resolve entity_rc.")
         print("  Confirm the pricer was passed --entity-rc <the same report file>.")

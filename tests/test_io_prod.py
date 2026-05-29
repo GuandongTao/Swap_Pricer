@@ -63,9 +63,9 @@ def test_layout_header_field_row_trade_row_footer(tmp_path):
     rows = _read(p)
     # 1 header + 1 field-name row + 1 trade row + 1 footer
     assert len(rows) == 4
-    # row 1: 5-cell header (col B = run date / today, not val date)
+    # row 1: 5-cell header (col B = val_date, not the run date)
     assert rows[0] == [
-        "H", date.today().strftime("%Y%m%d"), prod_filename(VAL),
+        "H", VAL.strftime("%Y%m%d"), prod_filename(VAL),
         VERSION_STAMP, SOURCE_NAME,
     ]
     # row 2: 49 field headers in the spec order
@@ -235,7 +235,7 @@ def test_ccid_asset_uses_192001(tmp_path):
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == \
         "1000-100008-192001-000000-0000-000000-000000-000000-0000"
-    assert row[_COL["PL/OCI CCID"]] == \
+    assert row[_COL["PL OCI CCID"]] == \
         "1000-100008-465012-000000-0000-000000-000000-000000-0000"
 
 
@@ -247,7 +247,7 @@ def test_ccid_liability_uses_392001(tmp_path):
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == \
         "1000-100008-392001-000000-0000-000000-000000-000000-0000"
-    assert row[_COL["PL/OCI CCID"]] == \
+    assert row[_COL["PL OCI CCID"]] == \
         "1000-100008-465012-000000-0000-000000-000000-000000-0000"
 
 
@@ -258,7 +258,7 @@ def test_ccid_zero_npv_blanks_bs_but_fills_pl(tmp_path):
                        entity_rc=_ENTITY_RC)
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == ""
-    assert row[_COL["PL/OCI CCID"]] == \
+    assert row[_COL["PL OCI CCID"]] == \
         "1001-100058-465012-000000-0000-000000-000000-000000-0000"
 
 
@@ -270,7 +270,7 @@ def test_ccid_missing_entity_or_lookup_leaves_blanks(tmp_path):
                        entity_rc=_ENTITY_RC)
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == ""
-    assert row[_COL["PL/OCI CCID"]] == ""
+    assert row[_COL["PL OCI CCID"]] == ""
 
     # entity present but missing from lookup -> blanks
     td_miss = _trade(oracle_entity_code="9999")
@@ -278,13 +278,13 @@ def test_ccid_missing_entity_or_lookup_leaves_blanks(tmp_path):
                        entity_rc=_ENTITY_RC)
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == ""
-    assert row[_COL["PL/OCI CCID"]] == ""
+    assert row[_COL["PL OCI CCID"]] == ""
 
     # entity_rc itself None (default) -> blanks
     p = write_prod_csv(tmp_path / "none.csv", {td_miss.trade_id: td_miss}, [v], VAL)
     row = _read(p)[2]
     assert row[_COL["Balance Sheet CCID"]] == ""
-    assert row[_COL["PL/OCI CCID"]] == ""
+    assert row[_COL["PL OCI CCID"]] == ""
 
 
 def test_load_entity_rc_reads_sample_report(tmp_path):

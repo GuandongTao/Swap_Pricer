@@ -324,7 +324,7 @@ auto-increment scheme).
 | Cash Flow Netting Allowed | AS | `td.cash_flow_netting_allowed` |
 | Position Netting Allowed | AT | `td.position_netting_allowed` |
 | Balance Sheet CCID | AU | 9-segment composite ID (see CCID section below); blank if entity lookup misses or NPV == 0 |
-| PL/OCI CCID | AV | 9-segment composite ID (Natural Account `465012` regardless of sign); blank if entity lookup misses |
+| PL OCI CCID | AV | 9-segment composite ID (Natural Account `465012` regardless of sign); blank if entity lookup misses |
 | Hedged Debt MTM | AW | `v.pv_fixed` (PV of fixed leg under SOFR DF — equates to the hedged-debt fair value) |
 
 **CME-branch rule**: an **exact** string equality
@@ -352,7 +352,7 @@ Natural Account varies by CCID type and Asset/Liability sign:
 | CCID | NPV > 0 (Asset) | NPV < 0 (Liability) | NPV == 0 |
 |---|---|---|---|
 | **Balance Sheet** (AU) | `192001` | `392001` | blank (matches blank Asset Liability Tag) |
-| **PL/OCI** (AV) | `465012` | `465012` | `465012` |
+| **PL OCI** (AV) | `465012` | `465012` | `465012` |
 
 If the entity code is blank or missing from the lookup table, **both** CCID
 fields are emitted blank — no half-built id ever leaves the writer. The

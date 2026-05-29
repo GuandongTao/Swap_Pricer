@@ -112,7 +112,7 @@
 #   oracle_entity_code           Oracle Entity Code (4-digit, e.g. 1000) --
 #                                  must match an Entity_Code in the Entity
 #                                  Reference Report. ALSO used to build the
-#                                  Balance Sheet CCID and PL/OCI CCID (cols
+#                                  Balance Sheet CCID and PL OCI CCID (cols
 #                                  AU/AV) by looking up the Default RC from
 #                                  entity/Entity_Reference_Report.csv. If this
 #                                  field is blank or the entity is not in the
@@ -158,7 +158,7 @@
 #     Internal Reference Number, Period Start/End/Payment dates, Pay Rec
 #     Status, Component Type, Coupon FV, Intrinsic Value FV, Time Value FV,
 #     InternalFacing-StreetFacing, Counterparty Code) are always written blank.
-#   * Balance Sheet CCID (AU) and PL/OCI CCID (AV) are NOT input fields --
+#   * Balance Sheet CCID (AU) and PL OCI CCID (AV) are NOT input fields --
 #     they are composed from oracle_entity_code + the Entity Reference Report
 #     lookup + the NPV-sign-driven natural account (Asset=192001 /
 #     Liability=392001 / PL=465012). See plan.md "CCID composition".

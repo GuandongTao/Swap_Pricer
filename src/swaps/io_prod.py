@@ -2,7 +2,7 @@
 
 Layout (one file per run):
 
-    Row 1   5-cell HEADER:   H | <yyyymmdd run date (today)> | IRS_Valuation_<val_date>-00001.csv | 00001 | KPMG
+    Row 1   5-cell HEADER:   H | <yyyymmdd val_date> | IRS_Valuation_<val_date>-00001.csv | 00001 | KPMG
     Row 2   49 field-name column headers (see :data:`PROD_FIELDS`)
     Row 3.. one row per priced trade, 49 columns
     Last    FOOTER row: T | <n_trades> | blanks ... with column-letter sums at
@@ -33,7 +33,7 @@ Natural Account varies by CCID type and Asset/Liability sign:
 
 * Balance Sheet CCID (AU):  ``192001`` if NPV > 0 (Asset), ``392001`` if NPV < 0
   (Liability), blank if NPV == 0 (matches the blank ``Asset Liability Tag``).
-* PL/OCI CCID (AV):         ``465012`` regardless of sign.
+* PL OCI CCID (AV):         ``465012`` regardless of sign.
 
 If the entity_rc lookup is missing or the entity code is blank, both CCID
 fields are left blank (no guess) and the row is otherwise unaffected.
@@ -139,7 +139,7 @@ PROD_FIELDS: list[str] = [
     "Cash Flow Netting Allowed",                    # AS  input
     "Position Netting Allowed",                     # AT  input
     "Balance Sheet CCID",                           # AU  blank
-    "PL/OCI CCID",                                  # AV  blank
+    "PL OCI CCID",                                  # AV  blank
     "Hedged Debt MTM",                              # AW  v.pv_fixed       SUM
 ]
 N_COLS = len(PROD_FIELDS)              # 49
@@ -269,7 +269,7 @@ def _row_for(
         cells[_COL["Position Netting Allowed"]] = nrow.position_netting_allowed
     cells[_COL["Hedged Debt MTM"]] = v.pv_fixed
     cells[_COL["Balance Sheet CCID"]] = bs_ccid
-    cells[_COL["PL/OCI CCID"]] = pl_ccid
+    cells[_COL["PL OCI CCID"]] = pl_ccid
     return [_fmt(c) for c in cells]
 
 
@@ -313,7 +313,7 @@ def write_prod_csv(
 
     header_row = [
         "H",
-        date.today().strftime("%Y%m%d"),
+        val_date.strftime("%Y%m%d"),
         prod_filename(val_date),
         VERSION_STAMP,
         SOURCE_NAME,
