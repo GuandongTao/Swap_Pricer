@@ -81,6 +81,21 @@ def test_portfolio_runner_produces_all_outputs(loaders, tmp_path):
     assert (run_dir / "manifest_2026-03-31.json").exists()
 
 
+def test_debug_workbook_accrued_sheet_reconciles_to_pricer(loaders, tmp_path):
+    from pathlib import Path
+    cl, fl, tl = loaders
+    pf = Portfolio(cl, fl, tl)
+    valuations, manifest = pf.run(date(2026, 3, 31), out_dir=tmp_path, write_debug=True)
+    run_dir = Path(manifest.outputs["run_dir"])
+    for v in valuations:
+        f = run_dir / "debug" / f"{v.trade_id}_debug.xlsx"
+        assert f.exists()
+        acc = pd.read_excel(f, sheet_name="Accrued")
+        # One row per leg; the signed contributions sum to the swap accrued.
+        assert set(acc["leg"]) == {"fixed", "floating"}
+        assert acc["signed_accrued"].sum() == pytest.approx(v.accrued, abs=1e-6)
+
+
 def test_portfolio_invariants(loaders, tmp_path):
     cl, fl, tl = loaders
     pf = Portfolio(cl, fl, tl)

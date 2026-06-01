@@ -90,6 +90,31 @@ def write_portfolio_workbook(
         curves_df.to_excel(w, sheet_name="Curves", index=False)
 
 
+_ACCRUED_COLS = [
+    "leg", "sign_in_swap", "accruing", "accrual_start", "val_date", "accrual_end",
+    "elapsed_days", "period_days", "day_count_fraction", "coupon_rate",
+    "fixings_used", "compounded_growth", "compounded_accrued", "spread_accrued",
+    "notional", "accrued", "signed_accrued",
+]
+
+
+def _accrued_debug_frame(swap, val_date) -> pd.DataFrame:
+    """Per-leg accrued breakdown (fixed + floating) for the debug workbook.
+
+    ``signed_accrued`` carries each leg's pricer sign (``pay_fixed`` flips it),
+    so the two rows sum to the swap-level ``accrued`` (= ``dirty - clean``) --
+    a built-in cross-check on the accrued calculation.
+    """
+    sign = -1.0 if swap.pay_fixed else 1.0
+    fixed_dbg = swap.fixed.accrued_debug(val_date)
+    float_dbg = swap.floating.accrued_debug(val_date)
+    fixed_dbg["sign_in_swap"] = sign
+    fixed_dbg["signed_accrued"] = sign * fixed_dbg["accrued"]
+    float_dbg["sign_in_swap"] = -sign
+    float_dbg["signed_accrued"] = -sign * float_dbg["accrued"]
+    return pd.DataFrame([fixed_dbg, float_dbg]).reindex(columns=_ACCRUED_COLS)
+
+
 def write_trade_debug_workbook(
     out_path: str | Path,
     swap,
@@ -141,6 +166,7 @@ def write_trade_debug_workbook(
         # Monthly-compounded view mirroring the fixed-leg cashflow granularity
         swap.floating.period_cashflows(val_date, sofr).to_excel(w, sheet_name="FloatingCF_byPeriod", index=False)
         swap.fixed.cashflows(val_date, sofr).to_excel(w, sheet_name="FixedCF", index=False)
+        _accrued_debug_frame(swap, val_date).to_excel(w, sheet_name="Accrued", index=False)
 
 
 def write_trade_detail_workbook(

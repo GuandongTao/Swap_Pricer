@@ -47,6 +47,15 @@ def _make_float_leg(curve, fixings=None, payment_delay_bdays=0, lockout_bdays=0)
     )
 
 
+def test_floating_leg_accrued_debug_matches_accrued():
+    c = _curve(0.04)
+    leg = _make_float_leg(c)  # first period starts 2026-06-15; VAL is before it
+    dbg = leg.accrued_debug(VAL)
+    assert dbg["leg"] == "floating" and dbg["accruing"] is False
+    assert dbg["accrued"] == 0.0
+    assert dbg["accrued"] == pytest.approx(leg.accrued(VAL), abs=1e-12)
+
+
 def test_telescoping_when_projection_equals_discount_flat():
     """With proj == disc, no delay, no history, no lockout, PV telescopes."""
     c = _curve(0.04)

@@ -446,9 +446,10 @@ Every numeric class exposes `to_debug_frame()` (or named variants) returning a f
 | `OISFloatingLeg` | `fixings_debug()` | Per-fixing-row frame before aggregation |
 | `OISFloatingLeg` | `period_breakdown()` | historical_product, projected_product, comp_rate, D, comp_coupon |
 | `FixedLeg` | `to_debug_frame()` | Per-period accrual, dcf, payment, df, pv |
+| `FixedLeg` / `OISFloatingLeg` | `accrued_debug(val_date)` | Per-leg accrued breakdown (accruing period bounds, elapsed/period days, dcf or compounded growth + spread, notional, accrued) |
 | `SwapPricer` | n/a — `SwapValuation` is the debug view | |
 
-**CLI `--debug` flag** writes one `output/debug/<trade_id>_debug.xlsx` per trade with each debug frame on a separate tab. Off by default.
+**CLI `--debug` flag** writes one `output/debug/<trade_id>_debug.xlsx` per trade with each debug frame on a separate tab. Off by default. The **`Accrued`** tab combines both legs' `accrued_debug` and adds `sign_in_swap` / `signed_accrued` columns whose sum equals the swap-level accrued (`dirty − clean`) — a built-in cross-check on the accrued calc.
 
 ---
 

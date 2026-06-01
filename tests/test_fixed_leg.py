@@ -39,6 +39,23 @@ def test_fixed_leg_pv_matches_closed_form_annuity():
     assert pv == pytest.approx(expected, abs=1e-8)
 
 
+def test_fixed_leg_accrued_debug_matches_accrued():
+    schedule = generate_schedule(
+        effective_date=date(2026, 1, 15),
+        termination_date=date(2031, 1, 15),
+        frequency="1Y",
+        calendar=NY_FED,
+    )
+    leg = FixedLeg(schedule, ConstantNotional(1_000_000), 0.05, ACT_360)
+    dbg = leg.accrued_debug(VAL)
+    assert dbg["leg"] == "fixed" and dbg["accruing"] is True
+    assert dbg["accrued"] == pytest.approx(leg.accrued(VAL), abs=1e-9)
+    assert dbg["coupon_rate"] == 0.05
+    # Before the leg starts -> not accruing, zero.
+    early = leg.accrued_debug(date(2025, 1, 1))
+    assert early["accruing"] is False and early["accrued"] == 0.0
+
+
 def test_fixed_leg_accrued_proportional_within_period():
     schedule = generate_schedule(
         effective_date=date(2026, 1, 15),

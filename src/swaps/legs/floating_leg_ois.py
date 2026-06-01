@@ -293,6 +293,48 @@ class OISFloatingLeg(Leg):
                 return self.notional(acc_s) * ((growth - 1.0) + spread_accrual)
         return 0.0
 
+    def accrued_debug(self, val_date: date) -> dict:
+        """Per-leg accrued breakdown for the debug workbook. Mirrors
+        :meth:`accrued`: compounds realized fixings (``fixing_date < val_date``,
+        day-count capped at val_date) then adds the spread accrual, * notional."""
+        for p in self.schedule:
+            acc_s, acc_e = self._acc(p)
+            if acc_s <= val_date < acc_e:
+                rows = self._period_fixing_rows(p, val_date)
+                growth = 1.0
+                n_used = 0
+                for row in rows:
+                    if row["fixing_date"] < val_date:
+                        end = min(row["fixing_date"] + timedelta(days=row["day_count"]), val_date)
+                        d_eff = (end - row["fixing_date"]).days
+                        growth *= 1.0 + row["reset_rate"] * d_eff / 360.0
+                        n_used += 1
+                partial_days = (val_date - acc_s).days
+                spread_accrual = self.spread * partial_days / 360.0
+                n = self.notional(acc_s)
+                return {
+                    "leg": "floating",
+                    "accruing": True,
+                    "accrual_start": acc_s,
+                    "val_date": val_date,
+                    "accrual_end": acc_e,
+                    "elapsed_days": partial_days,
+                    "period_days": (acc_e - acc_s).days,
+                    "fixings_used": n_used,
+                    "compounded_growth": growth,
+                    "compounded_accrued": n * (growth - 1.0),
+                    "spread_accrued": n * spread_accrual,
+                    "notional": n,
+                    "accrued": n * ((growth - 1.0) + spread_accrual),
+                }
+        return {
+            "leg": "floating", "accruing": False, "accrual_start": None,
+            "val_date": val_date, "accrual_end": None, "elapsed_days": 0,
+            "period_days": 0, "fixings_used": 0, "compounded_growth": 1.0,
+            "compounded_accrued": 0.0, "spread_accrued": 0.0, "notional": 0.0,
+            "accrued": 0.0,
+        }
+
     # ------------------------------------------------------------------ debug
     def fixings_debug(self, val_date: date) -> pd.DataFrame:
         """Per-fixing rows (no aggregates) — useful for hand-checking compounding."""

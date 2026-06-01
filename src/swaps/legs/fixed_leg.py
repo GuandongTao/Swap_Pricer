@@ -121,5 +121,34 @@ class FixedLeg(Leg):
                 return self.notional(s) * self.fixed_rate * dcf
         return 0.0
 
+    def accrued_debug(self, val_date: date) -> dict:
+        """Per-leg accrued breakdown for the debug workbook. Mirrors
+        :meth:`accrued` step by step so the number can be hand-checked:
+        ``accrued = notional * fixed_rate * year_fraction(start, val_date)``."""
+        for p in self.schedule:
+            s, e = self._acc(p)
+            if s <= val_date < e:
+                dcf = self.daycount.year_fraction(s, val_date)
+                n = self.notional(s)
+                return {
+                    "leg": "fixed",
+                    "accruing": True,
+                    "accrual_start": s,
+                    "val_date": val_date,
+                    "accrual_end": e,
+                    "elapsed_days": (val_date - s).days,
+                    "period_days": (e - s).days,
+                    "day_count_fraction": dcf,
+                    "coupon_rate": self.fixed_rate,
+                    "notional": n,
+                    "accrued": n * self.fixed_rate * dcf,
+                }
+        return {
+            "leg": "fixed", "accruing": False, "accrual_start": None,
+            "val_date": val_date, "accrual_end": None, "elapsed_days": 0,
+            "period_days": 0, "day_count_fraction": 0.0,
+            "coupon_rate": self.fixed_rate, "notional": 0.0, "accrued": 0.0,
+        }
+
     def to_debug_frame(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
         return self.cashflows(val_date, discount_curve)
