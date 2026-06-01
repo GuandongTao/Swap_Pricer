@@ -19,7 +19,8 @@ For trades sharing a netting_id::
 
     Gross DA       = sum( npv for npv > 0 )
     Gross DL       = sum( |npv| for npv < 0 )       # absolute value per spec
-    Netting Amount = min(Gross DA, Gross DL)
+    Netting Amount = 0 if Position Netting Allowed == "N"   # no offset permitted
+                     else min(Gross DA, Gross DL)
     Net DA         = Gross DA - Netting Amount
     Net DL         = Gross DL - Netting Amount
 
@@ -188,7 +189,14 @@ def _row_for_group(
 
     gross_da = g.gross_da
     gross_dl = g.gross_dl
-    netting_amount = min(gross_da, gross_dl)
+    # Position Netting Allowed = "N" -> no offset is permitted, so the netting
+    # amount is forced to 0 (Net DA = Gross DA, Net DL = Gross DL). Otherwise
+    # the standard offset applies. Accepts "N"/"No" (production uses "N").
+    position_netting_off = nrow.position_netting_allowed.strip().casefold() in {"n", "no"}
+    if position_netting_off:
+        netting_amount = 0.0
+    else:
+        netting_amount = min(gross_da, gross_dl)
     net_da = gross_da - netting_amount
     net_dl = gross_dl - netting_amount
 

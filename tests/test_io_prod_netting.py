@@ -106,6 +106,33 @@ def test_aggregation_one_sided_da_only(tmp_path):
     assert float(row[_NCOL["Net DL"]]) == 0.0
 
 
+def test_position_netting_not_allowed_forces_zero_netting(tmp_path):
+    # Same two-sided book as test_aggregation_math_two_sided, but Position
+    # Netting Allowed = "N" -> Netting Amount forced to 0, so Net DA/DL = Gross.
+    tds = {"T1": _t("T1", "NID-1"), "T2": _t("T2", "NID-1")}
+    vs = [_v("T1", 300.0), _v("T2", -180.0)]
+    db = {"NID-1": _nrow("NID-1", pn="N")}
+    p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
+    row = _read(p)[2]
+    assert float(row[_NCOL["Gross DA"]]) == pytest.approx(300.0)
+    assert float(row[_NCOL["Gross DL"]]) == pytest.approx(180.0)
+    assert float(row[_NCOL["Netting Amount"]]) == 0.0
+    assert float(row[_NCOL["Net DA"]]) == pytest.approx(300.0)
+    assert float(row[_NCOL["Net DL"]]) == pytest.approx(180.0)
+
+
+def test_position_netting_allowed_y_still_nets(tmp_path):
+    # Sanity: "Y" (production encoding) keeps the standard min() offset.
+    tds = {"T1": _t("T1", "NID-1"), "T2": _t("T2", "NID-1")}
+    vs = [_v("T1", 300.0), _v("T2", -180.0)]
+    db = {"NID-1": _nrow("NID-1", pn="Y")}
+    p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
+    row = _read(p)[2]
+    assert float(row[_NCOL["Netting Amount"]]) == pytest.approx(180.0)
+    assert float(row[_NCOL["Net DA"]]) == pytest.approx(120.0)
+    assert float(row[_NCOL["Net DL"]]) == pytest.approx(0.0)
+
+
 def test_groups_sorted_by_netting_id(tmp_path):
     tds = {
         "TA": _t("TA", "NID-B"),
