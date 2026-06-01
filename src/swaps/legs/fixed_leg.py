@@ -113,41 +113,78 @@ class FixedLeg(Leg):
             })
         return pd.DataFrame(rows)
 
+    def _period_accrued_detail(self, p: AccrualPeriod, val_date: date) -> dict | None:
+        """Accrued contribution of one period as of ``val_date`` (``None`` if the
+        period is not accruing -- not yet started, or already paid).
+
+        A period accrues from its start until its **payment** date (not its
+        accrual end). The day-count fraction runs to ``min(val_date,
+        accrual_end)``, so a period whose accrual has ended but has not yet paid
+        (``accrual_end <= val_date < payment_date``) contributes its **full**
+        coupon -- it is owed but unpaid."""
+        s, e = self._acc(p)
+        if not (s <= val_date < p.payment_date):
+            return None
+        eff_end = min(val_date, e)
+        dcf = self.daycount.year_fraction(s, eff_end)
+        n = self.notional(s)
+        return {
+            "accrual_start": s,
+            "accrual_end": e,
+            "payment_date": p.payment_date,
+            "period_complete": val_date >= e,
+            "elapsed_days": (eff_end - s).days,
+            "period_days": (e - s).days,
+            "day_count_fraction": dcf,
+            "coupon_rate": self.fixed_rate,
+            "notional": n,
+            "accrued": n * self.fixed_rate * dcf,
+        }
+
     def accrued(self, val_date: date) -> float:
-        for p in self.schedule:
-            s, e = self._acc(p)
-            if s <= val_date < e:
-                dcf = self.daycount.year_fraction(s, val_date)
-                return self.notional(s) * self.fixed_rate * dcf
-        return 0.0
+        # Sum over periods: a just-ended-but-unpaid period and the next, already
+        # started period can both be accruing at once (with a payment delay).
+        return sum(
+            d["accrued"]
+            for d in (self._period_accrued_detail(p, val_date) for p in self.schedule)
+            if d is not None
+        )
 
     def accrued_debug(self, val_date: date) -> dict:
-        """Per-leg accrued breakdown for the debug workbook. Mirrors
-        :meth:`accrued` step by step so the number can be hand-checked:
-        ``accrued = notional * fixed_rate * year_fraction(start, val_date)``."""
-        for p in self.schedule:
-            s, e = self._acc(p)
-            if s <= val_date < e:
-                dcf = self.daycount.year_fraction(s, val_date)
-                n = self.notional(s)
-                return {
-                    "leg": "fixed",
-                    "accruing": True,
-                    "accrual_start": s,
-                    "val_date": val_date,
-                    "accrual_end": e,
-                    "elapsed_days": (val_date - s).days,
-                    "period_days": (e - s).days,
-                    "day_count_fraction": dcf,
-                    "coupon_rate": self.fixed_rate,
-                    "notional": n,
-                    "accrued": n * self.fixed_rate * dcf,
-                }
+        """Per-leg accrued breakdown for the debug workbook. ``accrued`` is the
+        total over all accruing periods; the period-detail columns describe the
+        representative period (the one still mid-accrual if any, else the
+        completed-but-unpaid one). ``periods_accruing`` flags when more than one
+        period contributes (period boundary under a payment delay)."""
+        details = [
+            d for d in (self._period_accrued_detail(p, val_date) for p in self.schedule)
+            if d is not None
+        ]
+        total = sum(d["accrued"] for d in details)
+        if not details:
+            return {
+                "leg": "fixed", "accruing": False, "accrual_start": None,
+                "val_date": val_date, "accrual_end": None, "period_complete": False,
+                "periods_accruing": 0, "elapsed_days": 0, "period_days": 0,
+                "day_count_fraction": 0.0, "coupon_rate": self.fixed_rate,
+                "notional": 0.0, "accrued": 0.0,
+            }
+        open_d = [d for d in details if not d["period_complete"]]
+        rep = open_d[0] if open_d else details[0]
         return {
-            "leg": "fixed", "accruing": False, "accrual_start": None,
-            "val_date": val_date, "accrual_end": None, "elapsed_days": 0,
-            "period_days": 0, "day_count_fraction": 0.0,
-            "coupon_rate": self.fixed_rate, "notional": 0.0, "accrued": 0.0,
+            "leg": "fixed",
+            "accruing": True,
+            "accrual_start": rep["accrual_start"],
+            "val_date": val_date,
+            "accrual_end": rep["accrual_end"],
+            "period_complete": rep["period_complete"],
+            "periods_accruing": len(details),
+            "elapsed_days": rep["elapsed_days"],
+            "period_days": rep["period_days"],
+            "day_count_fraction": rep["day_count_fraction"],
+            "coupon_rate": self.fixed_rate,
+            "notional": rep["notional"],
+            "accrued": total,
         }
 
     def to_debug_frame(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:

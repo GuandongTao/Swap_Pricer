@@ -92,9 +92,9 @@ def write_portfolio_workbook(
 
 _ACCRUED_COLS = [
     "leg", "sign_in_swap", "accruing", "accrual_start", "val_date", "accrual_end",
-    "elapsed_days", "period_days", "day_count_fraction", "coupon_rate",
-    "fixings_used", "compounded_growth", "compounded_accrued", "spread_accrued",
-    "notional", "accrued", "signed_accrued",
+    "period_complete", "periods_accruing", "elapsed_days", "period_days",
+    "day_count_fraction", "coupon_rate", "fixings_used", "compounded_growth",
+    "compounded_accrued", "spread_accrued", "notional", "accrued", "signed_accrued",
 ]
 
 

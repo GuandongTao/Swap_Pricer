@@ -1,6 +1,6 @@
 """FixedLeg sanity checks against closed-form annuity PV."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -54,6 +54,48 @@ def test_fixed_leg_accrued_debug_matches_accrued():
     # Before the leg starts -> not accruing, zero.
     early = leg.accrued_debug(date(2025, 1, 1))
     assert early["accruing"] is False and early["accrued"] == 0.0
+
+
+def test_fixed_leg_accrued_full_period_when_ended_but_unpaid():
+    """Accrual ends but payment is delayed: on the accrual-end date the FULL
+    period coupon is accrued (previously this returned 0)."""
+    sch = generate_schedule(
+        effective_date=date(2026, 1, 1),
+        termination_date=date(2026, 4, 1),
+        frequency="1M",
+        calendar=NY_FED,
+        payment_delay_bdays=3,
+    )
+    leg = FixedLeg(sch, ConstantNotional(1_000_000), 0.05, ACT_360)
+    p0 = sch[0]
+    s, e = leg._acc(p0)
+    assert p0.payment_date > e  # payment delay puts pay date after accrual end
+    accrued = leg.accrued(e)    # on the accrual-end date
+    full = 1_000_000 * 0.05 * ACT_360.year_fraction(s, e)
+    assert accrued == pytest.approx(full, abs=1e-9)
+
+
+def test_fixed_leg_accrued_sums_completed_unpaid_plus_next():
+    sch = generate_schedule(
+        effective_date=date(2026, 1, 1),
+        termination_date=date(2026, 4, 1),
+        frequency="1M",
+        calendar=NY_FED,
+        payment_delay_bdays=3,
+    )
+    leg = FixedLeg(sch, ConstantNotional(1_000_000), 0.05, ACT_360)
+    p0, p1 = sch[0], sch[1]
+    _, e0 = leg._acc(p0)
+    s1, e1 = leg._acc(p1)
+    val = e0 + timedelta(days=1)
+    assert e0 <= val < p0.payment_date    # p0 done but unpaid
+    assert s1 <= val < e1                 # p1 already accruing
+    d0 = leg._period_accrued_detail(p0, val)
+    d1 = leg._period_accrued_detail(p1, val)
+    assert d0 is not None and d1 is not None and d1["accrued"] > 0.0
+    assert leg.accrued(val) == pytest.approx(d0["accrued"] + d1["accrued"], abs=1e-9)
+    # Once p0 has paid, it no longer contributes.
+    assert leg._period_accrued_detail(p0, p0.payment_date) is None
 
 
 def test_fixed_leg_accrued_proportional_within_period():

@@ -56,6 +56,86 @@ def test_floating_leg_accrued_debug_matches_accrued():
     assert dbg["accrued"] == pytest.approx(leg.accrued(VAL), abs=1e-12)
 
 
+def _flat_history(rate, start, end):
+    days = {}
+    d = start
+    while d <= end:
+        days[d] = rate
+        d += timedelta(days=1)
+    return FixingHistory(days)
+
+
+def _early_curve(rate=0.04):
+    # Anchored before the delayed-leg test dates so DFs are evaluable in Feb.
+    return ZeroCurve(date(2025, 12, 1), {"1M": rate, "3M": rate, "1Y": rate, "5Y": rate},
+                     ContinuousACT360())
+
+
+def _delayed_leg(curve, fixings, delay):
+    sch = generate_schedule(
+        effective_date=date(2026, 1, 1),
+        termination_date=date(2026, 4, 1),
+        frequency="1M",
+        calendar=NY_FED,
+        payment_delay_bdays=delay,
+    )
+    return OISFloatingLeg(
+        schedule=sch,
+        notional=ConstantNotional(1_000_000),
+        projection_curve=curve,
+        fixings=fixings,
+        daycount=ACT_360,
+        fixing_calendar=NY_FED,
+        payment_delay_bdays=delay,
+    )
+
+
+def test_accrued_full_period_when_accrual_ended_but_unpaid():
+    """Accrual ends but payment is delayed: on the accrual-end date the FULL
+    undiscounted period coupon is accrued (previously this returned 0)."""
+    c = _early_curve(0.04)
+    fixings = _flat_history(0.04, date(2025, 12, 1), date(2026, 5, 1))
+    leg = _delayed_leg(c, fixings, delay=3)
+    p0 = leg.schedule[0]
+    acc_e, pay0 = p0.end, p0.payment_date
+    assert pay0 > acc_e  # payment delay puts pay date after accrual end
+    # On the accrual end date: period done, not yet paid.
+    accrued = leg.accrued(acc_e)
+    cf = leg.cashflows(acc_e, c)
+    coupon = cf[(cf["flow_type"] == "coupon") & (cf["period_end"] == acc_e)]
+    period_cf = coupon["period_cashflow"].dropna().iloc[0]
+    assert accrued == pytest.approx(period_cf, abs=1e-6)
+    assert accrued > 0.0
+
+
+def test_accrued_sums_completed_unpaid_plus_next_started():
+    """Between a period's accrual end and its (delayed) pay date, the next
+    period has already started accruing -> both contribute."""
+    c = _early_curve(0.04)
+    fixings = _flat_history(0.04, date(2025, 12, 1), date(2026, 5, 1))
+    leg = _delayed_leg(c, fixings, delay=3)
+    p0, p1 = leg.schedule[0], leg.schedule[1]
+    acc_e0, pay0 = p0.end, p0.payment_date
+    val = acc_e0 + timedelta(days=1)
+    assert acc_e0 <= val < pay0          # still in the unpaid window for p0
+    assert p1.start <= val < p1.end      # p1 has started accruing
+    d0 = leg._period_accrued_detail(p0, val)
+    d1 = leg._period_accrued_detail(p1, val)
+    assert d0 is not None and d1 is not None and d1["accrued"] > 0.0
+    assert leg.accrued(val) == pytest.approx(d0["accrued"] + d1["accrued"], abs=1e-9)
+
+
+def test_accrued_zero_after_payment_date():
+    c = _early_curve(0.04)
+    fixings = _flat_history(0.04, date(2025, 12, 1), date(2026, 5, 1))
+    leg = _delayed_leg(c, fixings, delay=3)
+    p0 = leg.schedule[0]
+    # A day on/after p0's pay date but before p1 end: p0 is paid (excluded),
+    # only p1 should accrue -> p0 contributes nothing.
+    d0 = leg._period_accrued_detail(p0, p0.payment_date)
+    assert d0 is None
+
+
 def test_telescoping_when_projection_equals_discount_flat():
     """With proj == disc, no delay, no history, no lockout, PV telescopes."""
     c = _curve(0.04)

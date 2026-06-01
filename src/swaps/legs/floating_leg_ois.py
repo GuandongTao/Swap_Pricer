@@ -273,66 +273,95 @@ class OISFloatingLeg(Leg):
         start_rows, end_rows = self._principal_rows(val_date, discount_curve)
         return pd.DataFrame(start_rows + all_rows + end_rows)
 
+    def _period_accrued_detail(self, p: AccrualPeriod, val_date: date) -> dict | None:
+        """Accrued contribution of one period as of ``val_date`` (``None`` if the
+        period is not accruing -- not yet started, or already paid).
+
+        A period accrues from its start until its **payment** date (not its
+        accrual end). Compounding and the spread run to ``min(val_date,
+        accrual_end)``, so a period whose accrual has ended but has not yet paid
+        (``accrual_end <= val_date < payment_date``) contributes its **full,
+        undiscounted** period coupon -- it is owed but unpaid."""
+        acc_s, acc_e = self._acc(p)
+        if not (acc_s <= val_date < p.payment_date):
+            return None
+        eff_end = min(val_date, acc_e)
+        rows = self._period_fixing_rows(p, val_date)
+        if not rows:
+            return None
+        growth = 1.0
+        n_used = 0
+        for row in rows:
+            if row["fixing_date"] < eff_end:
+                # Cap day count so it doesn't extend past the effective end.
+                end = min(row["fixing_date"] + timedelta(days=row["day_count"]), eff_end)
+                d_eff = (end - row["fixing_date"]).days
+                growth *= 1.0 + row["reset_rate"] * d_eff / 360.0
+                n_used += 1
+        elapsed = (eff_end - acc_s).days
+        spread_accrual = self.spread * elapsed / 360.0
+        n = self.notional(acc_s)
+        return {
+            "accrual_start": acc_s,
+            "accrual_end": acc_e,
+            "payment_date": p.payment_date,
+            "period_complete": val_date >= acc_e,
+            "elapsed_days": elapsed,
+            "period_days": (acc_e - acc_s).days,
+            "fixings_used": n_used,
+            "compounded_growth": growth,
+            "compounded_accrued": n * (growth - 1.0),
+            "spread_accrued": n * spread_accrual,
+            "notional": n,
+            "accrued": n * ((growth - 1.0) + spread_accrual),
+        }
+
     def accrued(self, val_date: date) -> float:
-        for p in self.schedule:
-            acc_s, acc_e = self._acc(p)
-            if acc_s <= val_date < acc_e:
-                rows = self._period_fixing_rows(p, val_date)
-                if not rows:
-                    return 0.0
-                # Use only fixings strictly before val_date
-                growth = 1.0
-                for row in rows:
-                    if row["fixing_date"] < val_date:
-                        # Cap day count so it doesn't extend past val_date
-                        end = min(row["fixing_date"] + timedelta(days=row["day_count"]), val_date)
-                        d_eff = (end - row["fixing_date"]).days
-                        growth *= 1.0 + row["reset_rate"] * d_eff / 360.0
-                partial_days = (val_date - acc_s).days
-                spread_accrual = self.spread * partial_days / 360.0
-                return self.notional(acc_s) * ((growth - 1.0) + spread_accrual)
-        return 0.0
+        # Sum over periods: a just-ended-but-unpaid period and the next, already
+        # started period can both be accruing at once (with a payment delay).
+        return sum(
+            d["accrued"]
+            for d in (self._period_accrued_detail(p, val_date) for p in self.schedule)
+            if d is not None
+        )
 
     def accrued_debug(self, val_date: date) -> dict:
-        """Per-leg accrued breakdown for the debug workbook. Mirrors
-        :meth:`accrued`: compounds realized fixings (``fixing_date < val_date``,
-        day-count capped at val_date) then adds the spread accrual, * notional."""
-        for p in self.schedule:
-            acc_s, acc_e = self._acc(p)
-            if acc_s <= val_date < acc_e:
-                rows = self._period_fixing_rows(p, val_date)
-                growth = 1.0
-                n_used = 0
-                for row in rows:
-                    if row["fixing_date"] < val_date:
-                        end = min(row["fixing_date"] + timedelta(days=row["day_count"]), val_date)
-                        d_eff = (end - row["fixing_date"]).days
-                        growth *= 1.0 + row["reset_rate"] * d_eff / 360.0
-                        n_used += 1
-                partial_days = (val_date - acc_s).days
-                spread_accrual = self.spread * partial_days / 360.0
-                n = self.notional(acc_s)
-                return {
-                    "leg": "floating",
-                    "accruing": True,
-                    "accrual_start": acc_s,
-                    "val_date": val_date,
-                    "accrual_end": acc_e,
-                    "elapsed_days": partial_days,
-                    "period_days": (acc_e - acc_s).days,
-                    "fixings_used": n_used,
-                    "compounded_growth": growth,
-                    "compounded_accrued": n * (growth - 1.0),
-                    "spread_accrued": n * spread_accrual,
-                    "notional": n,
-                    "accrued": n * ((growth - 1.0) + spread_accrual),
-                }
+        """Per-leg accrued breakdown for the debug workbook. ``accrued`` is the
+        total over all accruing periods; the period-detail columns describe the
+        representative period (the one still mid-accrual if any, else the
+        completed-but-unpaid one). ``periods_accruing`` flags when more than one
+        period contributes (period boundary under a payment delay)."""
+        details = [
+            d for d in (self._period_accrued_detail(p, val_date) for p in self.schedule)
+            if d is not None
+        ]
+        total = sum(d["accrued"] for d in details)
+        if not details:
+            return {
+                "leg": "floating", "accruing": False, "accrual_start": None,
+                "val_date": val_date, "accrual_end": None, "period_complete": False,
+                "periods_accruing": 0, "elapsed_days": 0, "period_days": 0,
+                "fixings_used": 0, "compounded_growth": 1.0, "compounded_accrued": 0.0,
+                "spread_accrued": 0.0, "notional": 0.0, "accrued": 0.0,
+            }
+        open_d = [d for d in details if not d["period_complete"]]
+        rep = open_d[0] if open_d else details[0]
         return {
-            "leg": "floating", "accruing": False, "accrual_start": None,
-            "val_date": val_date, "accrual_end": None, "elapsed_days": 0,
-            "period_days": 0, "fixings_used": 0, "compounded_growth": 1.0,
-            "compounded_accrued": 0.0, "spread_accrued": 0.0, "notional": 0.0,
-            "accrued": 0.0,
+            "leg": "floating",
+            "accruing": True,
+            "accrual_start": rep["accrual_start"],
+            "val_date": val_date,
+            "accrual_end": rep["accrual_end"],
+            "period_complete": rep["period_complete"],
+            "periods_accruing": len(details),
+            "elapsed_days": rep["elapsed_days"],
+            "period_days": rep["period_days"],
+            "fixings_used": rep["fixings_used"],
+            "compounded_growth": rep["compounded_growth"],
+            "compounded_accrued": rep["compounded_accrued"],
+            "spread_accrued": rep["spread_accrued"],
+            "notional": rep["notional"],
+            "accrued": total,
         }
 
     # ------------------------------------------------------------------ debug
