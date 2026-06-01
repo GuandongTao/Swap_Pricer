@@ -31,10 +31,11 @@ from pathlib import Path
 import openpyxl
 import pandas as pd
 
+from ..calendar_us import month_end_curve_date
 from ..curve import ZeroCurve
 from ..fixings import FixingHistory
 from ..rate_quoting import DEFAULT, RateQuoting
-from .base import CurveLoader, FixingLoader
+from .base import CurveLoader, FixingLoader, MissingPreviousCloseError
 
 CURVE_RAW_RE = re.compile(
     r"^market_environment[_-](\d{4}-\d{2}-\d{2})\.csv$", re.IGNORECASE
@@ -62,7 +63,13 @@ class ExcelCurveLoader(CurveLoader):
         self._cache: dict[tuple[date, str], dict[str, float]] = {}
 
     def _file_path(self, val_date: date) -> Path:
-        raw_name = f"market_environment_{val_date.strftime('%Y-%m-%d')}.csv"
+        # Month-end on a weekend/holiday has no published file -> source the
+        # curve from the previous business day (curve is still anchored at
+        # val_date in load(), so DFs simply roll forward 1-2 days).
+        fb = month_end_curve_date(val_date)
+        target = fb if fb is not None else val_date
+        target_iso = target.strftime("%Y-%m-%d")
+        raw_name = f"market_environment_{target_iso}.csv"
         p = self.base_dir / raw_name
         if p.exists():
             return p
@@ -71,8 +78,14 @@ class ExcelCurveLoader(CurveLoader):
             if not f.is_file():
                 continue
             m = CURVE_RAW_RE.match(f.name)
-            if m and m.group(1) == val_date.strftime("%Y-%m-%d"):
+            if m and m.group(1) == target_iso:
                 return f
+        if fb is not None:
+            raise MissingPreviousCloseError(
+                f"Month-end {val_date} is a non-business day; required "
+                f"previous-close curve file for {target} not found in "
+                f"{self.base_dir} (expected {raw_name}). No further roll-back."
+            )
         raise FileNotFoundError(
             f"Curve file not found for {val_date} in {self.base_dir} "
             f"(expected {raw_name})"

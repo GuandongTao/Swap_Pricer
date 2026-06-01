@@ -10,6 +10,17 @@ from ..curve import ZeroCurve
 from ..fixings import FixingHistory
 
 
+class MissingPreviousCloseError(RuntimeError):
+    """A month-end fell on a non-business day and the required previous-close
+    market-data file is absent.
+
+    Deliberately **not** a ``FileNotFoundError`` so the batch runner does not
+    classify it as a benign ``skipped(no-curve)`` weekend: missing
+    previous-close data is a hard error (the caller must not silently roll back
+    further or proceed without a mark).
+    """
+
+
 class CurveLoader(ABC):
     @abstractmethod
     def load(self, val_date: date, curve_name: str) -> ZeroCurve: ...

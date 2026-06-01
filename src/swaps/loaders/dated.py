@@ -23,15 +23,35 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..calendar_us import month_end_curve_date
 from ..curve import ZeroCurve
 from ..rate_quoting import DEFAULT, RateQuoting
-from .base import CurveLoader
+from .base import CurveLoader, MissingPreviousCloseError
 
 _CANONICAL = {"SOFR": "sofr", "FEDFUNDS": "ff", "FF": "ff", "FED_FUNDS": "ff"}
 _CANONICAL_DF = {"SOFR": "sofr_df", "FEDFUNDS": "ff_df", "FF": "ff_df", "FED_FUNDS": "ff_df"}
 
 # Common short formats tried before falling through to pandas' permissive parser.
 _DATE_FORMATS = ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%m-%d-%Y", "%d-%m-%Y")
+
+
+def _drop_past_pillars(pillars: dict[date, float], val_date: date) -> dict[date, float]:
+    """Drop pillars dated on/before ``val_date``.
+
+    Dated files carry **absolute** pillar dates. When a month-end falls on a
+    weekend/holiday we re-anchor the previous-close curve at ``val_date`` (1-2
+    days later), which can push the near pillars (e.g. an overnight pillar) onto
+    or before the new anchor -- ``ZeroCurve`` rejects ``pillar_date <= val_date``.
+    Those stale short-end points are dropped; interpolation runs from the
+    (val_date, DF=1) anchor to the first surviving pillar. A no-op when no
+    pillar collides (the normal same-day path)."""
+    kept = {d: r for d, r in pillars.items() if d > val_date}
+    if not kept:
+        raise ValueError(
+            f"All pillars fall on/before val_date {val_date} after re-anchoring "
+            f"previous-close data; nothing left to build a curve from."
+        )
+    return kept
 
 
 def _parse_date(s: str) -> date:
@@ -62,13 +82,20 @@ class DatedCurveLoader(CurveLoader):
             raise ValueError(
                 f"Unknown curve_name {curve_name!r}; expected one of {sorted(_CANONICAL)}"
             )
-        p = self.base_dir / f"{prefix}_{val_date.strftime('%Y-%m-%d')}.csv"
-        if not p.exists():
-            raise FileNotFoundError(
-                f"Dated curve file not found: {p} (--pillar-dates expects "
-                f"{prefix}_{val_date.strftime('%Y-%m-%d')}.csv)"
+        fb = month_end_curve_date(val_date)
+        target = fb if fb is not None else val_date
+        p = self.base_dir / f"{prefix}_{target.strftime('%Y-%m-%d')}.csv"
+        if p.exists():
+            return p
+        if fb is not None:
+            raise MissingPreviousCloseError(
+                f"Month-end {val_date} is a non-business day; required "
+                f"previous-close curve file not found: {p}. No further roll-back."
             )
-        return p
+        raise FileNotFoundError(
+            f"Dated curve file not found: {p} (--pillar-dates expects "
+            f"{prefix}_{target.strftime('%Y-%m-%d')}.csv)"
+        )
 
     def _read_pillars(self, path: Path) -> dict[date, float]:
         out: dict[date, float] = {}
@@ -95,6 +122,7 @@ class DatedCurveLoader(CurveLoader):
     def load(self, val_date: date, curve_name: str) -> ZeroCurve:
         path = self._file_path(val_date, curve_name)
         pillars = self._read_pillars(path)
+        pillars = _drop_past_pillars(pillars, val_date)
         canonical = "SOFR" if _CANONICAL[curve_name.upper()] == "sofr" else "FEDFUNDS"
         return ZeroCurve.from_dated_pillars(
             val_date, pillars, rate_quoting=self.rate_quoting, name=canonical,
@@ -118,13 +146,20 @@ class DatedDFCurveLoader(CurveLoader):
             raise ValueError(
                 f"Unknown curve_name {curve_name!r}; expected one of {sorted(_CANONICAL_DF)}"
             )
-        p = self.base_dir / f"{prefix}_{val_date.strftime('%Y-%m-%d')}.csv"
-        if not p.exists():
-            raise FileNotFoundError(
-                f"Dated-DF curve file not found: {p} (--pillar-dates-df expects "
-                f"{prefix}_{val_date.strftime('%Y-%m-%d')}.csv)"
+        fb = month_end_curve_date(val_date)
+        target = fb if fb is not None else val_date
+        p = self.base_dir / f"{prefix}_{target.strftime('%Y-%m-%d')}.csv"
+        if p.exists():
+            return p
+        if fb is not None:
+            raise MissingPreviousCloseError(
+                f"Month-end {val_date} is a non-business day; required "
+                f"previous-close curve file not found: {p}. No further roll-back."
             )
-        return p
+        raise FileNotFoundError(
+            f"Dated-DF curve file not found: {p} (--pillar-dates-df expects "
+            f"{prefix}_{target.strftime('%Y-%m-%d')}.csv)"
+        )
 
     def _read_pillars(self, path: Path) -> dict[date, float]:
         out: dict[date, float] = {}
@@ -151,5 +186,6 @@ class DatedDFCurveLoader(CurveLoader):
     def load(self, val_date: date, curve_name: str) -> ZeroCurve:
         path = self._file_path(val_date, curve_name)
         pillars = self._read_pillars(path)
+        pillars = _drop_past_pillars(pillars, val_date)
         canonical = "SOFR" if _CANONICAL_DF[curve_name.upper()] == "sofr_df" else "FEDFUNDS"
         return ZeroCurve.from_dated_dfs(val_date, pillars, name=canonical)

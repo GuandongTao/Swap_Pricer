@@ -38,6 +38,7 @@ def _timed(timings: dict, label: str):
 
 import pandas as pd
 
+from .calendar_us import month_end_curve_date
 from .curve import ZeroCurve
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
@@ -95,6 +96,17 @@ class Portfolio:
         per_trade_timings: dict[str, float] = {}
 
         run_start = time.perf_counter()
+        # Month-end on a weekend/holiday: no published market data for val_date,
+        # so the curve loaders fall back to the previous business day's file
+        # (curve stays anchored at val_date). Announce it on stdout + manifest.
+        fb_curve_date = month_end_curve_date(val_date)
+        if fb_curve_date is not None:
+            msg = (
+                f"Month-end valuation {val_date} falls on a non-business day; "
+                f"using previous-close market data from {fb_curve_date}."
+            )
+            _log.warning(msg)
+            manifest.warnings.append(msg)
         _log.info("Loading curves and fixings for val_date=%s ...", val_date)
         with _timed(timings, "load_curves"):
             sofr = self.curve_loader.load(val_date, "SOFR")

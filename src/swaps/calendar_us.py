@@ -119,3 +119,28 @@ class USCalendar:
 
 
 NY_FED = USCalendar()
+
+
+def is_month_end(d: date) -> bool:
+    """True if ``d`` is the last calendar day of its month."""
+    return (d + timedelta(days=1)).day == 1
+
+
+def month_end_curve_date(val_date: date, calendar: USCalendar = NY_FED) -> date | None:
+    """Previous-close curve date for a month-end that is itself a non-business day.
+
+    When a month-end valuation date falls on a weekend or Fed holiday there is
+    no published market data for it. In that case we value *as of* ``val_date``
+    but source the curve from the **previous business day** (consistent with a
+    ``Preceding`` roll: weekends and holidays are skipped in one hop until a
+    real business day is reached).
+
+    Returns that previous-business-day date, or ``None`` when no fallback
+    applies -- i.e. ``val_date`` is itself a business day, or is not the last
+    calendar day of its month. The caller requires data for the returned date
+    exactly and does **not** roll back any further (a missing previous-close
+    file is a hard error, not a reason to keep searching).
+    """
+    if is_month_end(val_date) and not calendar.is_business_day(val_date):
+        return calendar.prev_business_day(val_date)
+    return None
