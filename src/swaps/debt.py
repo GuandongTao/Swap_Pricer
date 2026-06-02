@@ -7,7 +7,7 @@ A trade's ``hedge`` direction decides where AW comes from:
 
       IRS quantum_deal_number
           -> Debt Deal Number   (data/debt/Deal_Numbers.csv, static map)
-          -> Clean              (data/debt/Debt_Summary_<val_date>.xlsx)
+          -> Clean              (data/debt/Deal_Summary_<val_date>.xlsx)
 
 * ``Short`` -> the swap's own clean value (``v.clean``); no debt files needed.
 
@@ -16,7 +16,7 @@ Original signs are preserved in both cases (no abs()).
 Files (under ``data/debt/`` by default):
 
 * ``Deal_Numbers.csv`` -- header ``Debt Deal Number,IRS Deal Number``.
-* ``Debt_Summary_<val_date>.xlsx`` -- Sheet1 with a free-form title in row 1,
+* ``Deal_Summary_<val_date>.xlsx`` -- Sheet1 with a free-form title in row 1,
   column headers in row 2, data from row 3. We read ``Debt Deal Number`` and
   ``Clean`` by header name (the file carries many other columns).
 """
@@ -47,8 +47,8 @@ def _norm_deal(x: object) -> str:
 
 
 def debt_summary_filename(val_date: date) -> str:
-    """Spec filename: ``Debt_Summary_<YYYY-MM-DD>.xlsx``."""
-    return f"Debt_Summary_{val_date.isoformat()}.xlsx"
+    """Spec filename: ``Deal_Summary_<YYYY-MM-DD>.xlsx``."""
+    return f"Deal_Summary_{val_date.isoformat()}.xlsx"
 
 
 def load_deal_number_map(path: str | Path) -> dict[str, str]:
@@ -86,7 +86,7 @@ def load_deal_number_map(path: str | Path) -> dict[str, str]:
 
 
 def load_debt_clean(path: str | Path) -> dict[str, float]:
-    """``Debt Deal Number -> Clean`` from a ``Debt_Summary`` workbook.
+    """``Debt Deal Number -> Clean`` from a ``Deal_Summary`` workbook.
 
     Layout: row 1 free-form title, row 2 column headers, row 3+ data.
 

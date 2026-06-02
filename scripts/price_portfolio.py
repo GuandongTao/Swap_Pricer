@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "--debt-dir", default=str(ROOT / "data" / "debt"),
-        help="Directory holding Deal_Numbers.csv and Debt_Summary_<val_date>.xlsx, "
+        help="Directory holding Deal_Numbers.csv and Deal_Summary_<val_date>.xlsx, "
              "used to fill Hedged Debt MTM (col AW) for Long-hedge trades. Missing "
              "files -> Long-hedge trades error per-trade (manifest.errors).",
     )

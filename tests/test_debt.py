@@ -33,7 +33,7 @@ def test_load_debt_clean_sample():
 
 
 def test_debt_summary_filename():
-    assert debt_summary_filename(date(2026, 3, 31)) == "Debt_Summary_2026-03-31.xlsx"
+    assert debt_summary_filename(date(2026, 3, 31)) == "Deal_Summary_2026-03-31.xlsx"
 
 
 def test_load_deal_number_map_missing_columns(tmp_path):

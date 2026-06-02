@@ -148,7 +148,7 @@
 #                                  Debt MTM (col AW). "Long": AW = the hedged
 #                                  debt's Clean, resolved quantum_deal_number ->
 #                                  Debt Deal Number (data/debt/Deal_Numbers.csv)
-#                                  -> Clean (data/debt/Debt_Summary_<date>.xlsx).
+#                                  -> Clean (data/debt/Deal_Summary_<date>.xlsx).
 #                                  "Short": AW = the swap's own clean value with
 #                                  its sign reversed (-v.clean). Long sign is
 #                                  preserved. Blank/unknown, or
