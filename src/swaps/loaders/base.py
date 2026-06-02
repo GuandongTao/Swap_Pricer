@@ -124,6 +124,12 @@ class TradeDef:
     reporting_party: str = ""
     counterparty_location: str = ""
     deal_date: date | None = None       # trade date (NOT effective / start_date)
+    # Hedge direction for the Hedged Debt MTM output (col AW). Required on every
+    # trade row at prod-feed time: "Long" -> AW is the hedged debt's Clean value
+    # (quantum_deal_number -> Debt Deal Number -> Clean, via data/debt/);
+    # "Short" -> AW is the swap's own clean value with its sign reversed
+    # (-v.clean). See swaps.debt.
+    hedge: str = ""
     # Key into data/entity/Netting_Database.csv; the cash-flow / position netting
     # allowed flags and the netting entity are looked up from the DB at
     # output-emit time, NOT carried per-trade.

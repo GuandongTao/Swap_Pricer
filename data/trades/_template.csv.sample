@@ -144,11 +144,22 @@
 #                                  by this id at emit time and are NOT input
 #                                  columns here. A non-blank netting_id that is
 #                                  missing from the DB is a hard input error.
+#   hedge                        REQUIRED. "Long" or "Short" -- drives Hedged
+#                                  Debt MTM (col AW). "Long": AW = the hedged
+#                                  debt's Clean, resolved quantum_deal_number ->
+#                                  Debt Deal Number (data/debt/Deal_Numbers.csv)
+#                                  -> Clean (data/debt/Debt_Summary_<date>.xlsx).
+#                                  "Short": AW = the swap's own clean value with
+#                                  its sign reversed (-v.clean). Long sign is
+#                                  preserved. Blank/unknown, or
+#                                  a Long that can't resolve, is a hard per-trade
+#                                  error (recorded in manifest.errors).
 #
 # Output fields that are NOT sourced from this template (the prod writer fills
 # them itself):
 #   * As of Date  <- val_date passed on the CLI
-#   * Clean / Accrued / NPV / DV01 / Hedged Debt MTM  <- pricer output
+#   * Clean / Accrued / NPV / DV01  <- pricer output
+#   * Hedged Debt MTM (AW)  <- driven by the `hedge` input field (see above)
 #   * Valuation Currency = "USD"; Product = "IR"; HCL Type = "Interest Rate Swap"
 #   * Collateral Level = "Fully Collateralized"
 #   * Sub-Product2, Counterparty Type, QCCP / Cleared / Cash-Settled CCP
@@ -164,7 +175,7 @@
 #     Liability=392001 / PL=465012). See plan.md "CCID composition".
 #
 # Lines starting with # are ignored. Blank rows are ignored.
-trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id
-SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001
-SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002
-SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003
+trade_id,notional,pay_fixed,fixed_rate,start_date,maturity_date,fixed_frequency,fixed_daycount,fixed_bus_day_adj,fixed_eff_date_adj,fixed_pay_date_adj,fixed_adjust,fixed_roll_convention,fixed_payment_delay_bdays,fixed_principal_exchange,fixed_calculation_calendar,fixed_payment_calendar,fixed_first_period_accrual_end_date,floating_frequency,floating_daycount,floating_spread,floating_bus_day_adj,floating_eff_date_adj,floating_pay_date_adj,floating_rst_bus_day_adj,floating_adjust,floating_roll_convention,floating_payment_delay_bdays,floating_reset_lag_bdays,floating_lockout_bdays,floating_principal_exchange,floating_calculation_calendar,floating_fixing_calendar,floating_payment_calendar,floating_first_period_accrual_end_date,description,quantum_deal_number,oracle_entity_code,notional_currency,intercompany,counterparty_name_quantum,current_counterparty,entity_name_quantum,reporting_party,counterparty_location,deal_date,netting_id,hedge
+SWAP_TEST_001,500000000,false,0.0541,2026-03-09,2031-03-09,1M,ACT/360,ModifiedFollowing,,,acc_and_pay,forward_eom,2,none,NY_FED,,,,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,5Y pay-float bilateral bank trade,QD-100001,1000,USD,false,JPM Securities,JP Morgan Chase Bank NA,AMEX_NA_001,American Express National Bank,US,2026-03-05,NID-100001,Short
+SWAP_TEST_002,250000000,true,0.0380,2026-04-30,2036-04-30,1Y,30/360,Following,NoAdjust,,pay,forward_eom,2,end,NY_FED,,,3M,ACT/360,0,ModifiedFollowing,,,,acc_and_pay,forward_eom,2,0,0,none,NY_FED,NY_FED,,,10Y EOM cross-freq cleared trade,QD-100002,1000,USD,false,CME Clearing,CME Clearing House,AMEX_NA_001,American Express National Bank,US,2026-04-28,NID-100002,Long
+SWAP_TEST_003,100000000,false,0.0450,2026-06-15,2028-06-15,6M,ACT/360,ModifiedFollowing,,,acc_and_pay,backward,2,both,NY_FED,,2026-09-15,6M,ACT/360,0.0025,ModifiedFollowing,,,Preceding,acc_and_pay,backward,2,2,2,both,NY_FED,NY_FED,,2026-09-15,2Y intercompany w/ BBG First Payment Date override (anchored to 9/15),QD-100003,1001,USD,true,Amex Travel Related Services,Amex Travel Related Services Co Inc,AMEX_TRS_002,American Express Travel Related Services Company,US,2026-06-11,NID-100003,Short

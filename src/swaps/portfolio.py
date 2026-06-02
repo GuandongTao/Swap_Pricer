@@ -40,6 +40,10 @@ import pandas as pd
 
 from .calendar_us import month_end_curve_date
 from .curve import ZeroCurve
+from .debt import (
+    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_clean,
+    load_deal_number_map, resolve_hedged_debt_mtm,
+)
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
 from .io_prod import prod_filename, write_prod_csv
@@ -76,6 +80,7 @@ class Portfolio:
         write_prod: bool = True,
         entity_rc: dict[str, str] | None = None,
         netting_db: dict[str, NettingRow] | None = None,
+        debt_dir: str | Path | None = None,
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -130,6 +135,31 @@ class Portfolio:
             time.perf_counter() - run_start,
         )
 
+        # Hedged-debt lookups for col AW (only when writing the prod feed).
+        # Files are optional here: a Long trade that can't resolve raises a
+        # per-trade error in the loop below (recorded in manifest.errors[]).
+        deal_map: dict[str, str] = {}
+        debt_clean: dict[str, float] = {}
+        if write_prod and debt_dir is not None:
+            dd = Path(debt_dir)
+            dnp = dd / DEAL_NUMBERS_FILE
+            if dnp.exists():
+                deal_map = load_deal_number_map(dnp)
+            else:
+                _log.warning(
+                    "Deal-number map not found (%s) -> Long-hedge trades will error", dnp
+                )
+            # Debt summary is dated like the curve; reuse the month-end fallback
+            # so a weekend/holiday month-end pulls the previous business day's file.
+            ds_date = month_end_curve_date(val_date) or val_date
+            dsp = dd / debt_summary_filename(ds_date)
+            if dsp.exists():
+                debt_clean = load_debt_clean(dsp)
+            else:
+                _log.warning(
+                    "Debt summary not found (%s) -> Long-hedge trades will error", dsp
+                )
+
         valuations: list[SwapValuation] = []
         swaps_by_id: dict[str, "Swap"] = {}
         n_total = len(trades)
@@ -174,6 +204,13 @@ class Portfolio:
                             _log.warning(w)
                             manifest.warnings.append(w)
                         v = self.pricer.price(swap, md)
+                        if write_prod:
+                            # Per-trade hard error if hedge is blank/unknown or a
+                            # Long trade can't resolve to a debt Clean.
+                            v.meta["hedged_debt_mtm"] = resolve_hedged_debt_mtm(
+                                td.trade_id, td.hedge, td.quantum_deal_number,
+                                v.clean, deal_map, debt_clean,
+                            )
                         valuations.append(v)
                         swaps_by_id[v.trade_id] = swap
                         ok = True

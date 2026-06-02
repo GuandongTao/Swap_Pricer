@@ -3,6 +3,7 @@ description: "Hand-debug trade -- 7th-anchor variant. 500M, pay floating / recei
 
 notional: 500000000
 oracle_entity_code: "1001"     # keys into data/entity/Entity_Reference_Report.csv for CCID
+hedge: Short                   # Short -> Hedged Debt MTM (AW) = swap clean value
 pay_fixed: false               # we pay floating, receive fixed
 fixed_rate: 0.0541
 

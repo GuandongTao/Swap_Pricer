@@ -214,6 +214,26 @@ def test_footer_sums_match_column_letter_spec(tmp_path):
         assert float(footer[_COL[fv]]) == 0.0
 
 
+def test_hedged_debt_mtm_reads_meta_when_present(tmp_path):
+    # AW comes from v.meta['hedged_debt_mtm'] (set by the Portfolio runner from
+    # the trade's hedge direction), NOT v.pv_fixed.
+    td = _trade()
+    v = _valuation(pv_fixed=100000.0)
+    v.meta["hedged_debt_mtm"] = 512134804.0
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL)
+    row = _read(p)[2]
+    assert float(row[_COL["Hedged Debt MTM"]]) == pytest.approx(512134804.0)
+
+
+def test_hedged_debt_mtm_falls_back_to_pv_fixed(tmp_path):
+    # No meta value (e.g. direct writer call) -> legacy fixed-leg PV.
+    td = _trade()
+    v = _valuation(pv_fixed=100000.0)
+    p = write_prod_csv(tmp_path / "out.csv", {td.trade_id: td}, [v], VAL)
+    row = _read(p)[2]
+    assert float(row[_COL["Hedged Debt MTM"]]) == pytest.approx(100000.0)
+
+
 def test_empty_portfolio_produces_header_field_footer_only(tmp_path):
     p = write_prod_csv(tmp_path / "out.csv", {}, [], VAL)
     rows = _read(p)
