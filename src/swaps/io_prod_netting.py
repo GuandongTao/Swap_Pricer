@@ -10,8 +10,10 @@ Layout
     Row 1   5-cell HEADER:   H | <yyyymmdd val_date> | IRS_Netting_<val_date>-00001.csv | 00001 | KPMG
     Row 2   21 field-name column headers (see :data:`NETTING_FIELDS`)
     Row 3.. one row per netting_id present in the priced portfolio
-    Last    FOOTER row: T | <n_trades> | blanks ... with column-letter sums at
-            K (Gross DA), L (Gross DL), M (Netting Amount), N (Net DA), O (Net DL)
+    Last    FOOTER row: T | <n_entries> | blanks ... with column-letter sums at
+            K (Gross DA), L (Gross DL), M (Netting Amount), N (Net DA), O (Net DL).
+            <n_entries> is the number of netting rows in this file (one per
+            netting_id), NOT the underlying trade count.
 
 Aggregation
 -----------
@@ -225,10 +227,12 @@ def _row_for_group(
     return [_fmt(c) for c in cells]
 
 
-def _footer(rows: list[list[str]], n_trades: int) -> list[str]:
+def _footer(rows: list[list[str]], n_entries: int) -> list[str]:
     cells = [""] * N_NETTING_COLS
     cells[0] = "T"
-    cells[1] = str(n_trades)
+    # Col B = number of netting entries (rows in this file = one per netting_id),
+    # NOT the underlying trade count (that is the IRS Valuation footer's count).
+    cells[1] = str(n_entries)
     for col_idx in _NETTING_SUM_COLS:
         s = 0.0
         for r in rows:
@@ -269,12 +273,11 @@ def write_netting_csv(
     groups = _group_by_netting_id(trades_by_id, valuations)
     # Deterministic ordering -> sort by netting_id so reruns are diff-clean.
     rows: list[list[str]] = []
-    n_trades = 0
     for nid in sorted(groups):
         g = groups[nid]
         rows.append(_row_for_group(g, val_date, netting_db, entity_rc))
-        n_trades += len(g.trades)
-    footer = _footer(rows, n_trades=n_trades)
+    # Footer count = number of netting entries (rows), one per netting_id.
+    footer = _footer(rows, n_entries=len(rows))
 
     with out_path.open("w", encoding="utf-8", newline="") as fh:
         w = csv.writer(fh)

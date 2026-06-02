@@ -75,7 +75,7 @@ def test_header_field_row_and_footer(tmp_path):
     assert rows[1] == NETTING_FIELDS
     assert len(rows[1]) == N_NETTING_COLS == 21
     assert rows[-1][0] == "T"
-    assert rows[-1][1] == "1"   # 1 trade in the group
+    assert rows[-1][1] == "1"   # 1 netting entry (row) in the file
 
 
 def test_aggregation_math_two_sided(tmp_path):
@@ -131,6 +131,18 @@ def test_position_netting_allowed_y_still_nets(tmp_path):
     assert float(row[_NCOL["Netting Amount"]]) == pytest.approx(180.0)
     assert float(row[_NCOL["Net DA"]]) == pytest.approx(120.0)
     assert float(row[_NCOL["Net DL"]]) == pytest.approx(0.0)
+
+
+def test_footer_count_is_entries_not_trades(tmp_path):
+    # Two trades sharing ONE netting_id -> a single netting entry (row).
+    tds = {"T1": _t("T1", "NID-1"), "T2": _t("T2", "NID-1")}
+    vs = [_v("T1", 300.0), _v("T2", -180.0)]
+    db = {"NID-1": _nrow("NID-1")}
+    p = write_netting_csv(tmp_path / "n.csv", tds, vs, VAL, db, RC)
+    rows = _read(p)
+    # header + field row + 1 group row + footer == 4 rows
+    assert len(rows) == 4
+    assert rows[-1][1] == "1"  # 1 entry, NOT 2 trades
 
 
 def test_groups_sorted_by_netting_id(tmp_path):
@@ -215,7 +227,7 @@ def test_blank_netting_id_trades_skipped(tmp_path):
     # Only NID-1 -> 1 group row + header + field row + footer
     assert len(rows) == 4
     assert rows[2][_NCOL["Netting ID"]] == "NID-1"
-    assert rows[-1][1] == "1"  # footer trade count counts only NID-1
+    assert rows[-1][1] == "1"  # one netting entry (NID-1); blank-id trade excluded
 
 
 def test_missing_netting_id_in_db_raises(tmp_path):
@@ -257,7 +269,7 @@ def test_footer_sums(tmp_path):
     rows = _read(p)
     footer = rows[-1]
     assert footer[0] == "T"
-    assert footer[1] == "3"   # 3 trades total
+    assert footer[1] == "2"   # 2 netting entries (NID-A, NID-B), not 3 trades
     # Group A: GA=300 GL=200 N=200 NetDA=100 NetDL=0
     # Group B: GA=100 GL=0   N=0   NetDA=100 NetDL=0
     assert float(footer[_NCOL["Gross DA"]]) == pytest.approx(400.0)
