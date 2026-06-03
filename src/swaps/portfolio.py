@@ -41,7 +41,7 @@ import pandas as pd
 from .calendar_us import month_end_curve_date
 from .curve import ZeroCurve
 from .debt import (
-    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_clean,
+    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_mtm,
     load_deal_number_map, resolve_hedged_debt_mtm,
 )
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
@@ -139,7 +139,7 @@ class Portfolio:
         # Files are optional here: a Long trade that can't resolve raises a
         # per-trade error in the loop below (recorded in manifest.errors[]).
         deal_map: dict[str, str] = {}
-        debt_clean: dict[str, float] = {}
+        debt_mtm: dict[str, float] = {}
         if write_prod and debt_dir is not None:
             dd = Path(debt_dir)
             dnp = dd / DEAL_NUMBERS_FILE
@@ -154,7 +154,7 @@ class Portfolio:
             ds_date = month_end_curve_date(val_date) or val_date
             dsp = dd / debt_summary_filename(ds_date)
             if dsp.exists():
-                debt_clean = load_debt_clean(dsp)
+                debt_mtm = load_debt_mtm(dsp)
             else:
                 _log.warning(
                     "Debt summary not found (%s) -> Long-hedge trades will error", dsp
@@ -209,7 +209,7 @@ class Portfolio:
                             # Long trade can't resolve to a debt Clean.
                             v.meta["hedged_debt_mtm"] = resolve_hedged_debt_mtm(
                                 td.trade_id, td.hedge, td.quantum_deal_number,
-                                v.clean, deal_map, debt_clean,
+                                v.clean, deal_map, debt_mtm,
                             )
                         valuations.append(v)
                         swaps_by_id[v.trade_id] = swap

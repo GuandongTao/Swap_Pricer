@@ -2,23 +2,24 @@
 
 A trade's ``hedge`` direction decides where AW comes from:
 
-* ``Long``  -> the fair value (``Clean``) of the debt the swap hedges. The
-  chain is::
+* ``Long``  -> the MTM of the debt the swap hedges, taken as
+  ``Clean + USD Outstanding``. The chain is::
 
       IRS quantum_deal_number
-          -> Debt Deal Number   (data/debt/Deal_Numbers.csv, static map)
-          -> Clean              (data/debt/Deal_Summary_<val_date>.xlsx)
+          -> Debt Deal Number          (data/debt/Deal_Numbers.csv, static map)
+          -> Clean + USD Outstanding   (data/debt/Deal_Summary_<val_date>.xlsx)
 
 * ``Short`` -> the swap's own clean value (``v.clean``); no debt files needed.
 
-Original signs are preserved in both cases (no abs()).
+Original signs are preserved for Long; Short reverses the swap clean's sign.
 
 Files (under ``data/debt/`` by default):
 
 * ``Deal_Numbers.csv`` -- header ``Debt Deal Number,IRS Deal Number``.
 * ``Deal_Summary_<val_date>.xlsx`` -- Sheet1 with a free-form title in row 1,
-  column headers in row 2, data from row 3. We read ``Debt Deal Number`` and
-  ``Clean`` by header name (the file carries many other columns).
+  column headers in row 2, data from row 3. We read ``Debt Deal Number``,
+  ``Clean`` and ``USD Outstanding`` by header name (the file carries many
+  other columns).
 """
 
 from __future__ import annotations
@@ -85,8 +86,12 @@ def load_deal_number_map(path: str | Path) -> dict[str, str]:
     return out
 
 
-def load_debt_clean(path: str | Path) -> dict[str, float]:
-    """``Debt Deal Number -> Clean`` from a ``Deal_Summary`` workbook.
+def load_debt_mtm(path: str | Path) -> dict[str, float]:
+    """``Debt Deal Number -> Clean + USD Outstanding`` from a ``Deal_Summary``.
+
+    The Long-hedge MTM (col AW) is the debt's ``Clean`` plus its ``USD
+    Outstanding`` notional, so this loader reads both columns and returns
+    their sum per deal.
 
     Layout: row 1 free-form title, row 2 column headers, row 3+ data.
 
@@ -109,20 +114,21 @@ def load_debt_clean(path: str | Path) -> dict[str, float]:
     try:
         debt_i = header.index("Debt Deal Number")
         clean_i = header.index("Clean")
+        out_i = header.index("USD Outstanding")
     except ValueError:
         raise ValueError(
-            f"{p}: header row 2 must contain 'Debt Deal Number' and 'Clean'; "
-            f"got {header}"
+            f"{p}: header row 2 must contain 'Debt Deal Number', 'Clean' and "
+            f"'USD Outstanding'; got {header}"
         )
     out: dict[str, float] = {}
     for r in rows[2:]:
-        if r is None or debt_i >= len(r) or clean_i >= len(r):
+        if r is None or max(debt_i, clean_i, out_i) >= len(r):
             continue
         deal = _norm_deal(r[debt_i])
-        if not deal or r[clean_i] is None:
+        if not deal or r[clean_i] is None or r[out_i] is None:
             continue
         try:
-            out[deal] = float(r[clean_i])
+            out[deal] = float(r[clean_i]) + float(r[out_i])
         except (TypeError, ValueError):
             continue
     return out
@@ -134,13 +140,14 @@ def resolve_hedged_debt_mtm(
     quantum_deal_number: str,
     swap_clean: float,
     deal_map: dict[str, str],
-    debt_clean: dict[str, float],
+    debt_mtm: dict[str, float],
 ) -> float:
     """Compute the Hedged Debt MTM (col AW) for one trade.
 
     ``Short`` -> ``-swap_clean`` (the swap's clean value with its sign
-    **reversed**). ``Long`` -> the hedged debt's Clean, resolved
-    ``quantum_deal_number -> Debt Deal Number -> Clean`` (sign preserved).
+    **reversed**). ``Long`` -> the hedged debt's ``Clean + USD Outstanding``,
+    resolved ``quantum_deal_number -> Debt Deal Number -> Clean + USD
+    Outstanding`` (sign preserved).
 
     Raises ``ValueError`` (a hard, per-trade error) when ``hedge`` is blank /
     unrecognized, or a ``Long`` trade cannot be resolved to a debt Clean. The
@@ -163,12 +170,12 @@ def resolve_hedged_debt_mtm(
                 f"{trade_id}: IRS deal number {irs_deal!r} is not mapped to a "
                 f"debt deal number in {DEAL_NUMBERS_FILE}."
             )
-        if debt_deal not in debt_clean:
+        if debt_deal not in debt_mtm:
             raise ValueError(
                 f"{trade_id}: debt deal number {debt_deal!r} (mapped from IRS "
                 f"deal {irs_deal!r}) not found in the Debt Summary."
             )
-        return debt_clean[debt_deal]
+        return debt_mtm[debt_deal]
     raise ValueError(
         f"{trade_id}: 'hedge' must be 'Long' or 'Short' (got {hedge!r}); it is "
         f"required on every trade row for the IRS Valuation feed."

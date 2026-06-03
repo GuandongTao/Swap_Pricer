@@ -327,7 +327,7 @@ auto-increment scheme).
 | Position Netting Allowed | AT | `td.position_netting_allowed` |
 | Balance Sheet CCID | AU | 9-segment composite ID (see CCID section below); blank if entity lookup misses or NPV == 0 |
 | PL OCI CCID | AV | 9-segment composite ID (Natural Account `465012` regardless of sign); blank if entity lookup misses |
-| Hedged Debt MTM | AW | Driven by the per-trade `hedge` field. **`Short`** → `−v.clean` (the swap's own clean value, **sign reversed**). **`Long`** → the hedged debt's `Clean`, resolved `td.quantum_deal_number` → Debt Deal Number (`data/debt/Deal_Numbers.csv`) → `Clean` (`data/debt/Deal_Summary_<val_date>.xlsx`, see `swaps.debt`). Original signs preserved. `hedge` is **required**; blank/unknown, or a `Long` that can't resolve to a debt `Clean`, is a hard per-trade error (`manifest.errors[]`, run `status="partial"`). The Debt Summary file is resolved by `val_date` and honors the same month-end weekend/holiday fallback as the curves. Resolved in `Portfolio.run` and stashed on `v.meta["hedged_debt_mtm"]`; `io_prod` falls back to the legacy `v.pv_fixed` only when meta is unset (e.g. direct `write_prod_csv` calls). |
+| Hedged Debt MTM | AW | Driven by the per-trade `hedge` field. **`Short`** → `−v.clean` (the swap's own clean value, **sign reversed**). **`Long`** → the hedged debt's `Clean + USD Outstanding`, resolved `td.quantum_deal_number` → Debt Deal Number (`data/debt/Deal_Numbers.csv`) → `Clean + USD Outstanding` (`data/debt/Deal_Summary_<val_date>.xlsx`, see `swaps.debt`). Original signs preserved. `hedge` is **required**; blank/unknown, or a `Long` that can't resolve, is a hard per-trade error (`manifest.errors[]`, run `status="partial"`). The Debt Summary file is resolved by `val_date` and honors the same month-end weekend/holiday fallback as the curves. Resolved in `Portfolio.run` and stashed on `v.meta["hedged_debt_mtm"]`; `io_prod` falls back to the legacy `v.pv_fixed` only when meta is unset (e.g. direct `write_prod_csv` calls). |
 
 **CME-branch rule**: an **exact** string equality
 `td.current_counterparty == "CME Clearing House"` triggers all five
@@ -382,7 +382,7 @@ column letters cross-checked against the 49-field order):
 | U, V, W | 0 | columns are always blank; sums are always 0 (sanity tripwire) |
 | AK | Σ `DA` (positive NPVs only) | |
 | AL | Σ `DL` (Σ \|npv\| over negative NPVs — positive total) | |
-| AW | Σ `Hedged Debt MTM` | sum of the per-trade AW values (debt `Clean` for Long, `−`swap `clean` for Short) |
+| AW | Σ `Hedged Debt MTM` | sum of the per-trade AW values (debt `Clean + USD Outstanding` for Long, `−`swap `clean` for Short) |
 
 All other cells in the footer row are blank strings.
 
