@@ -423,7 +423,7 @@ Semantics:
 - `period_start` / `period_end` — outer payment-period bounds (constant across all rows within one period). `payment_date = period_end + payment_delay_bdays` (NY-Fed business days).
 - `accrual_start` / `accrual_end` — **per-fixing** sub-interval. `accrual_start = fixing_date`; `accrual_end = next fixing date` (or `period_end` on the last fixing of a period). `day_count = (accrual_end − accrual_start).days`.
 - `reset_rate` — the rate that applies for [`accrual_start`, `accrual_end`). For past fixings it comes from `FixingHistory`; for future fixings, the simple-ACT/360 forward `(DF(f)/DF(next_f) − 1) × 360/days`.
-- `compounded_coupon` = `(∏(1 + r_i · d_i/360) − 1) · 360 / D` where `D = period_end − period_start` in calendar days.
+- `compounded_coupon` = `(∏(1 + r_i · d_i/360) − 1) · 360 / D` where `D = period_end − period_start` in calendar days. In the debug **`FloatingCF_byPeriod`** tab (col L) this value is display-rounded to **5 dp in percent** (e.g. `5.12345%`), half-up, per business convention; `effective_coupon`, `payment_amount` and all downstream pricing use the raw unrounded rate.
 
 ### Fixed-leg cashflow columns
 
