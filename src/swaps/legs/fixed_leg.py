@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -119,13 +119,15 @@ class FixedLeg(Leg):
 
         A period accrues from its start until its **payment** date (not its
         accrual end). The day-count fraction runs to ``min(val_date,
-        accrual_end)``, so a period whose accrual has ended but has not yet paid
-        (``accrual_end <= val_date < payment_date``) contributes its **full**
-        coupon -- it is owed but unpaid."""
+        accrual_end)`` **inclusive** (client convention: both accrual start and
+        val_date are counted), so a period whose accrual has ended but has not
+        yet paid (``accrual_end <= val_date < payment_date``) contributes its
+        **full** coupon -- it is owed but unpaid."""
         s, e = self._acc(p)
         if not (s <= val_date < p.payment_date):
             return None
-        eff_end = min(val_date, e)
+        # eff_end is an exclusive upper bound; +1 day makes val_date inclusive.
+        eff_end = min(val_date, e) + timedelta(days=1)
         dcf = self.daycount.year_fraction(s, eff_end)
         n = self.notional(s)
         return {

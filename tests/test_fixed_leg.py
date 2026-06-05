@@ -57,8 +57,12 @@ def test_fixed_leg_accrued_debug_matches_accrued():
 
 
 def test_fixed_leg_accrued_full_period_when_ended_but_unpaid():
-    """Accrual ends but payment is delayed: on the accrual-end date the FULL
-    period coupon is accrued (previously this returned 0)."""
+    """On val_date = p0.end (= p1.start) with a payment delay, both periods
+    contribute to accrued under the inclusive convention:
+      - p0: eff_end = e+1  →  year_fraction(s0, e+1) days
+      - p1: starts today, eff_end = val_date+1 = e+1  →  1 extra day
+    Total is 2 days more than the standard period coupon year_fraction(s, e)."""
+    from datetime import timedelta
     sch = generate_schedule(
         effective_date=date(2026, 1, 1),
         termination_date=date(2026, 4, 1),
@@ -67,12 +71,17 @@ def test_fixed_leg_accrued_full_period_when_ended_but_unpaid():
         payment_delay_bdays=3,
     )
     leg = FixedLeg(sch, ConstantNotional(1_000_000), 0.05, ACT_360)
-    p0 = sch[0]
-    s, e = leg._acc(p0)
-    assert p0.payment_date > e  # payment delay puts pay date after accrual end
-    accrued = leg.accrued(e)    # on the accrual-end date
-    full = 1_000_000 * 0.05 * ACT_360.year_fraction(s, e)
-    assert accrued == pytest.approx(full, abs=1e-9)
+    p0, p1 = sch[0], sch[1]
+    s0, e0 = leg._acc(p0)
+    s1, _  = leg._acc(p1)
+    assert p0.payment_date > e0  # payment delay puts pay date after accrual end
+    accrued = leg.accrued(e0)
+    # p0 contributes year_fraction(s0, e0+1); p1 contributes year_fraction(s1, e0+1)
+    expected = 1_000_000 * 0.05 * (
+        ACT_360.year_fraction(s0, e0 + timedelta(days=1)) +
+        ACT_360.year_fraction(s1, e0 + timedelta(days=1))
+    )
+    assert accrued == pytest.approx(expected, abs=1e-9)
 
 
 def test_fixed_leg_accrued_sums_completed_unpaid_plus_next():
@@ -106,10 +115,12 @@ def test_fixed_leg_accrued_proportional_within_period():
         calendar=NY_FED,
     )
     leg = FixedLeg(schedule, ConstantNotional(1_000_000), 0.05, ACT_360)
-    # First period starts ~ Jan 15 2026; val_date Mar 31 sits inside it
+    # First period starts ~ Jan 15 2026; val_date Mar 31 sits inside it.
+    # Inclusive convention: val_date is counted, so eff_end = VAL + 1 day.
+    from datetime import timedelta
     acc = leg.accrued(VAL)
     p0 = schedule[0]
-    expected = 1_000_000 * 0.05 * ACT_360.year_fraction(p0.start, VAL)
+    expected = 1_000_000 * 0.05 * ACT_360.year_fraction(p0.start, VAL + timedelta(days=1))
     assert acc == pytest.approx(expected, abs=1e-9)
 
 
