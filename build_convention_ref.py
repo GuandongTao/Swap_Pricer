@@ -142,7 +142,9 @@ ROWS = [
      "ACT/ACT-ISDA: actual days / actual days in the year  (government bonds)"),
     (None,"fixed_payment_delay_bdays","Fixed Payment Delay",
      "Integer >= 0","0","Fixed leg",
-     "Business days after the accrual period ends before the coupon is paid.\n0 = pay on the last day of the period"),
+     "Business days after the accrual period ends before the coupon is paid.\n"
+     "T+N is counted from the ADJUSTED period end (Bloomberg/ISDA standard).\n"
+     "0 = pay on the last day of the adjusted period"),
     (None,"fixed_calculation_calendar","Fixed Accrual Calendar",
      "NY_FED  (currently only supported)","NY_FED","Fixed leg",
      "Holiday calendar used to determine business days for rolling period boundaries.\nCustom holidays can be added via fixed_calculation_calendar_extras or _extras_file"),
@@ -193,7 +195,8 @@ ROWS = [
     (None,"floating_payment_delay_bdays","Floating Payment Delay",
      "Integer >= 0","0","Floating leg",
      "Business days after the compounding period ends before the floating coupon is settled.\n"
-     "Payment date = unadjusted period end + delay, then rolled by floating_pay_date_adj"),
+     "T+N is counted from the ADJUSTED period end (Bloomberg/ISDA standard), then rolled by floating_pay_date_adj.\n"
+     "Example: period ends Sunday May 10 -> adjusts to Monday May 11 -> T+2 = Wednesday May 13"),
     (None,"floating_principal_exchange","Floating Principal Exchange",
      "none / start / end / both","none","Floating leg",
      "Same as the fixed-leg equivalent.\nFor standard interest-only swaps, leave as none on both legs"),
