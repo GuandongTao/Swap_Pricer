@@ -63,6 +63,34 @@ def test_payment_delay_applied():
         assert p.payment_date == NY_FED.add_business_days(p.end, 2)
 
 
+def test_payment_delay_anchors_off_adjusted_end_when_period_end_is_weekend():
+    """T+N payment delay must count from the ADJUSTED period end, not the
+    unadjusted (raw calendar) end.
+
+    Nov 1 2026 is a Sunday.  The unadjusted monthly period boundary falls on
+    that Sunday; ModifiedFollowing rolls it to Monday Nov 2.  With a 2-bday
+    delay the payment should be Wednesday Nov 4 (T+2 from Mon Nov 2), not
+    Tuesday Nov 3 (which would be T+2 from the unadjusted Sunday Nov 1).
+    """
+    periods = generate_schedule(
+        effective_date=date(2026, 10, 1),   # Thursday
+        termination_date=date(2027, 1, 1),
+        frequency="1M",
+        calendar=NY_FED,
+        payment_delay_bdays=2,
+    )
+    # Find the period whose UNADJUSTED end is Sunday Nov 1 2026
+    nov_period = next(p for p in periods if p.unadjusted_end == date(2026, 11, 1))
+    assert nov_period.end == date(2026, 11, 2), "MF should roll Sunday Nov 1 to Monday Nov 2"
+    # Payment = T+2 from the ADJUSTED end (Mon Nov 2), not unadjusted (Sun Nov 1)
+    assert nov_period.payment_date == date(2026, 11, 4), (
+        "T+2 from adjusted Mon Nov 2 should be Wed Nov 4, not Tue Nov 3"
+    )
+    # General invariant: payment_date == adjusted_end + N bdays for every period
+    for p in periods:
+        assert p.payment_date == NY_FED.add_business_days(p.end, 2)
+
+
 # --- BBG First Payment Date override (first_period_accrual_end_date) --------
 def test_first_period_accrual_end_date_anchors_forward_with_front_stub():
     # Effective 2026-04-02, maturity 2031-04-02, semi-annual.

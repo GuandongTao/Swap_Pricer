@@ -213,6 +213,34 @@ def test_history_overrides_curve_for_past_fixings():
     assert p0_row["compounded_coupon"] > 0.05
 
 
+def test_round_pct5_half_up():
+    from swaps.legs.floating_leg_ois import _round_pct5
+    # 5 dp in percent == 7 dp on the decimal rate; ties round half-up.
+    assert _round_pct5(0.05123455) == 0.0512346
+    assert _round_pct5(0.05123454) == 0.0512345
+    assert _round_pct5(0.0512345) == 0.0512345
+
+
+def test_period_cashflows_compounded_coupon_rounded_to_pct5():
+    """FloatingCF_byPeriod col L is display-rounded to 5 dp in percent."""
+    c = _curve(0.0412345678)  # curve rate with digits past the 7th dp
+    leg = _make_float_leg(c)
+    pcf = leg.period_cashflows(VAL, c)
+    coupons = pcf.dropna(subset=["compounded_coupon"])["compounded_coupon"]
+    assert len(coupons) > 0
+    for v in coupons:
+        # Quantized to 1e-7: scaling by 1e7 yields an integer.
+        assert round(v * 1e7) == pytest.approx(v * 1e7, abs=1e-6)
+    # effective_coupon stays on the raw (unrounded) rate (spread == 0 here),
+    # so it sits within one rounding step of the displayed compounded coupon
+    # but is not itself quantized to 7 dp.
+    last = pcf.dropna(subset=["effective_coupon"]).iloc[0]
+    assert abs(last["effective_coupon"] - last["compounded_coupon"]) < 1e-7
+    assert round(last["effective_coupon"] * 1e7) != pytest.approx(
+        last["effective_coupon"] * 1e7, abs=1e-9
+    )
+
+
 def test_lockout_freezes_last_n_rates():
     """With lockout=2, the last 2 fixing rates equal the 3rd-to-last fixing rate."""
     # Quarterly schedule so each period has more fixings to play with

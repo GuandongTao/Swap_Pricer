@@ -162,8 +162,10 @@ def generate_schedule(
     `calendar` is the calculation calendar (accrual/effective adjustment).
     The effective date is rolled by `eff_date_adj`; every other boundary
     (including the terminal/maturity date) by `bus_day_adj`. The payment date
-    is re-based on the **unadjusted** period end + `payment_delay_bdays`
+    is re-based on the **adjusted** period end + `payment_delay_bdays`
     business days on `payment_calendar`, then rolled by `pay_date_adj`.
+    This matches Bloomberg SWPM / ISDA convention: T+N is counted from the
+    adjusted boundary shown in confirmations, not from the raw calendar date.
 
     If two adjacent boundaries adjust to the same business day (typically a
     tiny stub rolled onto its neighbor by a holiday/weekend), the inner
@@ -221,8 +223,10 @@ def generate_schedule(
     for i in range(len(unadjusted) - 1):
         u_s, u_e = unadjusted[i], unadjusted[i + 1]
         a_s, a_e = adjusted[i], adjusted[i + 1]
-        # Payment date is derived from the UNADJUSTED period end.
-        pay = pay_cal.add_business_days(u_e, payment_delay_bdays) if payment_delay_bdays else u_e
+        # Payment date is derived from the ADJUSTED period end (Bloomberg/ISDA
+        # standard: T+N is counted from the adjusted boundary that appears in
+        # confirmations and Bloomberg SWPM, not from the raw calendar date).
+        pay = pay_cal.add_business_days(a_e, payment_delay_bdays) if payment_delay_bdays else a_e
         pay = pay_cal.roll(pay, pay_date_adj)
         periods.append(
             AccrualPeriod(

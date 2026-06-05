@@ -18,6 +18,7 @@ For each accrual period [T_s, T_e]:
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 import pandas as pd
 
@@ -28,6 +29,16 @@ from ..fixings import FixingHistory
 from ..notional import NotionalSchedule
 from ..schedule import AccrualPeriod
 from .base import Leg
+
+# Business convention for displaying the compounded coupon: round to 5 decimal
+# places of the *percentage* (e.g. 5.12345%), i.e. 7 dp on the decimal rate.
+# Half-up, not banker's rounding.
+_PCT5_QUANTUM = Decimal("1e-7")
+
+
+def _round_pct5(rate: float) -> float:
+    """Round a decimal rate to 5 dp in percent terms (5.12345%), half-up."""
+    return float(Decimal(repr(rate)).quantize(_PCT5_QUANTUM, rounding=ROUND_HALF_UP))
 
 
 class OISFloatingLeg(Leg):
@@ -413,7 +424,10 @@ class OISFloatingLeg(Leg):
                     "historical_product": hist_g,
                     "projected_product": proj_g,
                     "growth": growth,
-                    "compounded_coupon": comp_rate,
+                    # Business convention: 5 dp in percent (e.g. 5.12345%).
+                    # Display-only rounding; effective_coupon/payment_amount
+                    # below stay on the raw rate.
+                    "compounded_coupon": _round_pct5(comp_rate),
                     "spread": self.spread,
                     "effective_coupon": comp_rate + self.spread,
                     "payment_amount": period_cf,
