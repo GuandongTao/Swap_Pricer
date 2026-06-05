@@ -63,9 +63,9 @@ Roll values accepted (unchanged set): `None`/`NoAdjust`, `Following`,
   `acc_and_pay` → adjusted bounds (legacy behavior); `pay` → **unadjusted**
   bounds for accrual, only the payment date adjusted; `none` → nothing
   adjusted. `AccrualPeriod` carries **both** unadjusted and adjusted bounds
-  (additive). Payment date is re-based on the **unadjusted** period end +
-  pay delay, then rolled by Pay Date Adj (corrects the legacy behavior of
-  deriving pay from the already-accrual-adjusted end).
+  (additive). Payment date is re-based on the **adjusted** period end +
+  pay delay (T+N counted from the boundary shown in Bloomberg SWPM /
+  confirmations), then rolled by Pay Date Adj.
 - **Validation (two-tier, no strict flag):** any input combination is
   accepted; *impossible* combos raise a hard error; combinations Bloomberg
   grays out (e.g. fixed `adjust=acc_and_pay` with an EOM roll + 30/360
