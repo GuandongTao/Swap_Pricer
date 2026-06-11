@@ -297,14 +297,14 @@ Matches the KPMG IRS-valuation feed spec (`Output_Format.xlsx`). Written by `src
 | Quantum Deal Number | C | `td.quantum_deal_number` |
 | Oracle Entity Code | D | `td.oracle_entity_code` |
 | Notional Currency | E | `td.notional_currency` |
-| As of Date | F | `val_date` |
+| As of Date | F | `val_date` — formatted `mm/dd/yyyy` |
 | Clean price | G | `v.clean` |
 | Accrued Interest | H | `v.accrued` |
 | Total Value (NPV) | I | `v.dirty` |
 | DV01 | J | `v.dv01` |
 | Valuation Currency | K | constant `"USD"` |
 | Child Reference Number / Period Start/End/Payment | L–O | always blank |
-| Maturity Date | P | `td.maturity_date` |
+| Maturity Date | P | `td.maturity_date` — formatted `mm/dd/yyyy` |
 | Notional 1 Amount | Q | `td.notional` |
 | Notional 1 Amount USD | R | `td.notional` |
 | Pay Rec Status / Component Type | S–T | always blank |
@@ -326,7 +326,7 @@ Matches the KPMG IRS-valuation feed spec (`Output_Format.xlsx`). Written by `src
 | DL | AL | `abs(npv)` if `npv < 0` else blank |
 | Asset Liability Tag | AM | `"Asset"` / `"Liability"` / blank (zero NPV) |
 | Qualifying CCP / Cleared / Cash-Settled CCP | AN–AP | CME → `"Yes"`, else `"No"` |
-| Deal Date | AQ | `td.deal_date` |
+| Deal Date | AQ | `td.deal_date` — formatted `mm/dd/yyyy` |
 | Netting ID | AR | `td.netting_id` |
 | Cash Flow Netting Allowed | AS | from netting DB |
 | Position Netting Allowed | AT | from netting DB |
@@ -371,7 +371,7 @@ Written by `src/swaps/io_prod_netting.py` when both `netting_db` and `entity_rc`
 | Col | Field | Source |
 |---|---|---|
 | A | Field | `"Position Netting"` |
-| B | As of Date | `val_date` |
+| B | As of Date | `val_date` — formatted `mm/dd/yyyy` |
 | C | Product | `"IRS"` |
 | D | Entity | `"American Express Company"` |
 | E | Oracle Entity Code | `netting_db[netting_id].netting_entity` |

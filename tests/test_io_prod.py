@@ -93,7 +93,7 @@ def test_constants_filled_correctly(tmp_path):
     assert row[_COL["Product"]] == "IR"
     assert row[_COL["HCL Type"]] == "Interest Rate Swap"
     assert row[_COL["Collateral Level"]] == "Fully Collateralized"
-    assert row[_COL["As of Date"]] == VAL.isoformat()
+    assert row[_COL["As of Date"]] == VAL.strftime("%m/%d/%Y")
 
 
 def test_pricing_fields_threaded_through(tmp_path):

@@ -178,7 +178,7 @@ def _fmt(v) -> str:
             return ""
         return repr(v)
     if isinstance(v, date):
-        return v.isoformat()
+        return v.strftime("%m/%d/%Y")
     return str(v)
 
 
