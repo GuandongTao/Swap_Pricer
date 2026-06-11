@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
 from .curve import ZeroCurve
+from .fixings import FixingHistory
 from .pricer import SwapValuation
+from .swap import Swap
 
 
-def _summary_row(v: SwapValuation, run_id: str, run_date, git_sha: str) -> dict:
+def _summary_row(v: SwapValuation, run_id: str, run_date: datetime, git_sha: str) -> dict[str, object]:
     m = v.meta or {}
     return {
         "run_id": run_id,
@@ -35,7 +38,7 @@ def _summary_row(v: SwapValuation, run_id: str, run_date, git_sha: str) -> dict:
 
 
 def _stack_cashflows(
-    valuations: list[SwapValuation], attr: str, run_id: str, run_date, git_sha: str
+    valuations: list[SwapValuation], attr: str, run_id: str, run_date: datetime, git_sha: str
 ) -> pd.DataFrame:
     frames = []
     for v in valuations:
@@ -52,7 +55,7 @@ def _stack_cashflows(
 
 
 def _curves_frame(
-    curves: dict[str, ZeroCurve], run_id: str, val_date, run_date, git_sha: str
+    curves: dict[str, ZeroCurve], run_id: str, val_date: date | None, run_date: datetime, git_sha: str
 ) -> pd.DataFrame:
     rows = []
     for name, c in curves.items():
@@ -73,7 +76,7 @@ def write_portfolio_workbook(
     valuations: list[SwapValuation],
     curves: dict[str, ZeroCurve],
     run_id: str,
-    run_date,
+    run_date: datetime,
     git_sha: str,
 ) -> None:
     out_path = Path(out_path)
@@ -98,7 +101,7 @@ _ACCRUED_COLS = [
 ]
 
 
-def _accrued_debug_frame(swap, val_date) -> pd.DataFrame:
+def _accrued_debug_frame(swap: Swap, val_date: date) -> pd.DataFrame:
     """Per-leg accrued breakdown (fixed + floating) for the debug workbook.
 
     ``signed_accrued`` carries each leg's pricer sign (``pay_fixed`` flips it),
@@ -117,11 +120,11 @@ def _accrued_debug_frame(swap, val_date) -> pd.DataFrame:
 
 def write_trade_debug_workbook(
     out_path: str | Path,
-    swap,
-    val_date,
+    swap: Swap,
+    val_date: date,
     sofr: ZeroCurve,
     ff: ZeroCurve,
-    fixings,
+    fixings: FixingHistory,
     grid_days: int | None = None,
 ) -> None:
     """Per-trade debug workbook: dump every intermediate frame as a separate tab.
@@ -137,8 +140,6 @@ def write_trade_debug_workbook(
       FloatingPeriods                        -- per-period historical product * projected product
       FloatingCF / FixedCF                   -- final cashflow tables (with discount factors)
     """
-    from datetime import timedelta
-
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -173,7 +174,7 @@ def write_trade_detail_workbook(
     out_path: str | Path,
     v: SwapValuation,
     run_id: str,
-    run_date,
+    run_date: datetime,
     git_sha: str,
 ) -> None:
     out_path = Path(out_path)

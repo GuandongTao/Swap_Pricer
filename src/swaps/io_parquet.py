@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 from .curve import ZeroCurve
+from .io_excel import _curves_frame, _stack_cashflows, _summary_row
 from .pricer import SwapValuation
-from .io_excel import _stack_cashflows, _summary_row, _curves_frame
 
 
 def write_parquet_outputs(
@@ -16,7 +17,7 @@ def write_parquet_outputs(
     valuations: list[SwapValuation],
     curves: dict[str, ZeroCurve],
     run_id: str,
-    run_date,
+    run_date: datetime,
     git_sha: str,
 ) -> dict[str, Path]:
     out_dir = Path(out_dir)

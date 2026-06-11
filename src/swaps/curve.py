@@ -11,7 +11,9 @@ discounting) and a Fed Funds curve (used for projection).
 
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -151,7 +153,6 @@ class ZeroCurve:
         behaviour (log-linear DF interpolation, dual-curve pricing, DV01,
         par rate) is identical.
         """
-        import math as _math
         obj = cls.__new__(cls)
         obj.val_date = val_date
         obj.rate_quoting = DEFAULT  # placeholder; not used to derive DFs here
@@ -167,7 +168,7 @@ class ZeroCurve:
             if df <= 0.0:
                 raise ValueError(f"Pillar {d}: DF must be > 0 (got {df})")
             parsed.append(Pillar(tenor=d.isoformat(), pillar_date=d, days=days,
-                                 zero_rate=_math.nan, df=df))
+                                 zero_rate=math.nan, df=df))
         parsed.sort(key=lambda p: p.days)
         obj._pillars = tuple(parsed)
         obj._days = np.concatenate(([0], np.array([p.days for p in parsed], dtype=np.int64)))
@@ -185,7 +186,7 @@ class ZeroCurve:
     def df(self, d: date) -> float:
         return float(self.df_vector([d])[0])
 
-    def df_vector(self, dates) -> np.ndarray:
+    def df_vector(self, dates: Iterable[date]) -> np.ndarray:
         ds = pd.to_datetime(pd.Series(list(dates))).dt.date.values
         days = np.array([(x - self.val_date).days for x in ds], dtype=np.float64)
         if np.any(days < 0):
@@ -225,11 +226,10 @@ class ZeroCurve:
             ``RateQuoting``), apply the continuous-ACT/360 equivalent shift
             at the DF level: ``DF_new = DF * exp(-delta * days / 360)``.
         """
-        import math as _math
         new_pillars: dict[date, float] = {}
         for p in self._pillars:
-            if _math.isnan(p.zero_rate):
-                new_df = p.df * _math.exp(-delta * p.days / 360.0)
+            if math.isnan(p.zero_rate):
+                new_df = p.df * math.exp(-delta * p.days / 360.0)
             else:
                 new_df = self.rate_quoting.rate_to_df(p.zero_rate + delta, p.days)
             new_pillars[p.pillar_date] = new_df
