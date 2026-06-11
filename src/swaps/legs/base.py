@@ -18,6 +18,7 @@ class Leg(ABC):
         """Return a DataFrame of cashflows with discount-related columns populated."""
 
     def pv(self, val_date: date, discount_curve: ZeroCurve) -> float:
+        """Sum the ``discounted_cashflow`` column from ``cashflows()``. Returns 0.0 if the column is absent."""
         df = self.cashflows(val_date, discount_curve)
         if "discounted_cashflow" not in df.columns:
             return 0.0

@@ -39,7 +39,7 @@ def load_extra_holidays(path: str | Path) -> list[date]:
     return out
 
 
-def _to_date(v) -> date:
+def _to_date(v: object) -> date:
     if isinstance(v, datetime):
         return v.date()
     if isinstance(v, date):

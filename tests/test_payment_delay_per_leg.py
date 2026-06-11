@@ -51,9 +51,9 @@ def test_per_leg_delay_diverges_payment_dates():
     last_uend = swap.fixed.schedule[-1].unadjusted_end  # 2031-06-15
     fx_pay = swap.fixed.schedule[-1].payment_date
     fl_pay = swap.floating.schedule[-1].payment_date
-    # Fixed: 0 BD delay -> pay = roll(unadjusted end). Floating: +5 BD.
+    # Fixed: 0 BD delay -> pay = roll(unadjusted end). Floating: +5 BD from adjusted end.
     assert fl_pay == NY_FED.add_business_days(
-        NY_FED.add_business_days(last_uend, 0), 5
+        NY_FED.roll(last_uend, "ModifiedFollowing"), 5
     )
     assert fl_pay > fx_pay
     assert swap.meta["fixed_payment_delay_bdays"] == 0

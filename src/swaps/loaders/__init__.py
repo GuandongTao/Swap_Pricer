@@ -23,6 +23,7 @@ class CombinedTradeLoader(TradeLoader):
         self._loaders = loaders
 
     def load_all(self) -> list[TradeDef]:
+        """Return all trades from every loader, raising on duplicate ``trade_id``."""
         seen: dict[str, TradeDef] = {}
         for l in self._loaders:
             for t in l.load_all():
@@ -32,6 +33,7 @@ class CombinedTradeLoader(TradeLoader):
         return list(seen.values())
 
     def load(self, trade_id: str) -> TradeDef:
+        """Return the single trade matching ``trade_id`` across all loaders. Raises ``KeyError`` if absent."""
         for t in self.load_all():
             if t.trade_id == trade_id:
                 return t

@@ -57,7 +57,7 @@ def _strip_comment_lines(text: str) -> str:
     return "\n".join(keep)
 
 
-def _to_bool(v) -> bool:
+def _to_bool(v: object) -> bool:
     s = str(v).strip().lower()
     if s in ("true", "1", "yes", "y", "t"):
         return True
@@ -66,7 +66,7 @@ def _to_bool(v) -> bool:
     raise ValueError(f"Cannot parse boolean from {v!r}")
 
 
-def _to_date(v) -> date:
+def _to_date(v: object) -> date:
     if isinstance(v, date) and not isinstance(v, datetime):
         return v
     if isinstance(v, datetime):
@@ -78,14 +78,14 @@ def _to_date(v) -> date:
         return pd.to_datetime(s).date()
 
 
-def _to_date_list(v) -> list[date]:
+def _to_date_list(v: object) -> list[date]:
     s = str(v).strip()
     if not s:
         return []
     return [_to_date(x) for x in s.replace(";", ",").split(",") if x.strip()]
 
 
-def _blank(v) -> bool:
+def _blank(v: object) -> bool:
     return (
         v is None
         or (isinstance(v, str) and not v.strip())
@@ -107,7 +107,7 @@ def _clean_str(v) -> str:
     return s
 
 
-def _parse_row(row: dict) -> TradeDef:
+def _parse_row(row: dict[str, object]) -> TradeDef:
     missing = _REQUIRED - {k for k, v in row.items() if not _blank(v)}
     if missing:
         raise ValueError(f"CSV row {row.get('trade_id')!r} missing required: {sorted(missing)}")

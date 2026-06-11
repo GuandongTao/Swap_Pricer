@@ -9,6 +9,25 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
+from .calendar_us import month_end_curve_date
+from .curve import ZeroCurve
+from .debt import (
+    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_mtm,
+    load_deal_number_map, resolve_hedged_debt_mtm,
+)
+from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
+from .io_parquet import write_parquet_outputs
+from .io_prod import prod_filename, write_prod_csv
+from .io_prod_netting import netting_filename, write_netting_csv
+from .loaders.base import CurveLoader, FixingLoader, TradeLoader
+from .manifest import RunManifest
+from .market_data import MarketData
+from .netting_db import NettingRow
+from .pricer import SwapPricer, SwapValuation
+from .trade_builder import build_swap
+
 _log = logging.getLogger(__name__)
 
 TRADE_ID_PREFIX = "AMEX_DAILY_IRS"
@@ -29,31 +48,13 @@ def _qualify_amex_id(raw: str, val_date: date) -> tuple[str, str]:
 
 
 @contextmanager
-def _timed(timings: dict, label: str):
+def _timed(timings: dict[str, float], label: str):
+    """Context manager that records elapsed seconds for ``label`` into ``timings``."""
     t0 = time.perf_counter()
     try:
         yield
     finally:
         timings[label] = time.perf_counter() - t0
-
-import pandas as pd
-
-from .calendar_us import month_end_curve_date
-from .curve import ZeroCurve
-from .debt import (
-    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_mtm,
-    load_deal_number_map, resolve_hedged_debt_mtm,
-)
-from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
-from .io_parquet import write_parquet_outputs
-from .io_prod import prod_filename, write_prod_csv
-from .io_prod_netting import netting_filename, write_netting_csv
-from .loaders.base import CurveLoader, FixingLoader, TradeLoader
-from .netting_db import NettingRow
-from .manifest import RunManifest
-from .market_data import MarketData
-from .pricer import SwapPricer, SwapValuation
-from .trade_builder import build_swap
 
 
 class Portfolio:
