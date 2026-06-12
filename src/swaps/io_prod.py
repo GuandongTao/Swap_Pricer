@@ -42,6 +42,7 @@ fields are left blank (no guess) and the row is otherwise unaffected.
 from __future__ import annotations
 
 import csv
+import io
 from datetime import date
 from pathlib import Path
 
@@ -293,6 +294,24 @@ def _footer(rows: list[list[str]], n_trades: int) -> list[str]:
     return cells
 
 
+def write_csv_no_trailing_newline(out_path: Path, all_rows: list[list]) -> None:
+    """Write ``all_rows`` as CSV with NO trailing newline after the final row.
+
+    ``csv.writer`` appends its ``\\r\\n`` line terminator after every row,
+    including the last one, which leaves a blank final line when the feed is
+    opened in a text editor. Both prod feeds (valuation + netting) must end
+    exactly at the footer's last cell, so we render through an in-memory buffer
+    and strip the single trailing terminator before writing to disk. All CSV
+    quoting is preserved because the buffer uses the same ``csv.writer`` dialect.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    for r in all_rows:
+        w.writerow(r)
+    with out_path.open("w", encoding="utf-8", newline="") as fh:
+        fh.write(buf.getvalue().rstrip("\r\n"))
+
+
 def prod_filename(val_date: date) -> str:
     """Spec filename: ``IRS_Valuation_<YYYY-MM-DD>-00001.csv``."""
     return f"IRS_Valuation_{val_date.isoformat()}-{VERSION_STAMP}.csv"
@@ -337,11 +356,5 @@ def write_prod_csv(
         rows.append(_row_for(td, v, val_date, entity_rc=entity_rc, netting_db=netting_db))
     footer = _footer(rows, n_trades=len(rows))
 
-    with out_path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(header_row)
-        w.writerow(PROD_FIELDS)
-        for r in rows:
-            w.writerow(r)
-        w.writerow(footer)
+    write_csv_no_trailing_newline(out_path, [header_row, PROD_FIELDS, *rows, footer])
     return out_path
