@@ -51,15 +51,18 @@ def debt_summary_filename(val_date: date) -> str:
 
 
 def value_debt(td: TradeDef, discount_curve: ZeroCurve, val_date: date) -> dict[str, float]:
-    """Compute the hedged bond's Clean / Accrued / Dirty as of ``val_date``.
+    """Compute the hedged bond's Clean / Accrued / Dirty as of ``val_date``,
+    signed from the **obligor's** perspective (the party that owes the debt).
 
-    Dirty = PV of remaining coupons + principal (``FixedLeg.pv``); Accrued uses
-    the same inclusive-of-val_date convention as the IRS fixed leg
-    (``FixedLeg.accrued``); Clean = Dirty - Accrued.
+    ``FixedLeg.pv`` / ``.accrued`` give the bond*holder's* (lender) positive PV;
+    we negate to the obligor's view, so Clean / Accrued / Dirty are liabilities
+    (negative). Dirty = -(PV of remaining coupons + principal); Accrued uses the
+    same inclusive-of-val_date convention as the IRS fixed leg; Clean = Dirty -
+    Accrued. Col AW is then ``Clean (negative) + USD Outstanding (positive)``.
     """
     leg = build_debt_leg(td)
-    dirty = leg.pv(val_date, discount_curve)
-    accrued = leg.accrued(val_date)
+    dirty = -leg.pv(val_date, discount_curve)
+    accrued = -leg.accrued(val_date)
     return {"clean": dirty - accrued, "accrued": accrued, "dirty": dirty}
 
 

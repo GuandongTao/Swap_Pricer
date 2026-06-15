@@ -54,10 +54,11 @@ def test_debt_summary_filename():
 def test_value_debt_structural():
     sofr = ExcelCurveLoader(DATA / "curves").load(date(2026, 3, 31), "SOFR")
     v = value_debt(_bond_trade(), sofr, date(2026, 3, 31))
-    # Dirty = Clean + Accrued exactly; accrued positive mid-period; premium bond.
+    # Signed from the obligor's view -> Clean/Accrued/Dirty are negative
+    # liabilities. Dirty = Clean + Accrued exactly; premium-bond magnitude.
     assert v["dirty"] == pytest.approx(v["clean"] + v["accrued"])
-    assert v["accrued"] > 0
-    assert 0.9 * 500_000_000 < v["clean"] < 1.2 * 500_000_000
+    assert v["accrued"] < 0
+    assert -1.2 * 500_000_000 < v["clean"] < -0.9 * 500_000_000
 
 
 def test_value_debt_reconciles_with_legacy_sheet():
@@ -66,11 +67,12 @@ def test_value_debt_reconciles_with_legacy_sheet():
     # the same neighbourhood ("better numbers", not an exact match).
     sofr = ExcelCurveLoader(DATA / "curves").load(date(2026, 3, 31), "SOFR")
     v = value_debt(_bond_trade(), sofr, date(2026, 3, 31))
-    # Accrued is curve-independent -> reproduces the legacy 30/360 figure exactly.
-    assert v["accrued"] == pytest.approx(4_921_875.0, rel=1e-6)
+    # Accrued is curve-independent -> reproduces the legacy 30/360 magnitude
+    # exactly, negated to the obligor's sign.
+    assert v["accrued"] == pytest.approx(-4_921_875.0, rel=1e-6)
     # Clean is curve-driven; ours discounts on SOFR, theirs on a different curve,
-    # so expect "same neighbourhood" (~10%), not an exact match.
-    assert v["clean"] == pytest.approx(512_134_804.0, rel=0.15)
+    # so expect "same neighbourhood" (~15%), not an exact match.
+    assert v["clean"] == pytest.approx(-512_134_804.0, rel=0.15)
 
 
 def test_build_debt_leg_requires_settlement_date():
