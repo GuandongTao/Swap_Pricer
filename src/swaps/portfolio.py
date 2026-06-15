@@ -156,6 +156,8 @@ class Portfolio:
                 ok = False
                 matured = False
                 err: str | None = None
+                debt_status: str | None = None   # "priced" | "skipped" (LH/SC)
+                debt_dt = 0.0
                 try:
                     if td.maturity_date < val_date:
                         matured = True
@@ -194,11 +196,16 @@ class Portfolio:
                             # LH trade's debt block is missing/unpriceable.
                             debt_mtm_value: float | None = None
                             if (td.hedge or "").strip().upper() == "LH":
+                                dt0 = time.perf_counter()
                                 dv = value_debt(td, sofr, val_date)
+                                debt_dt = time.perf_counter() - dt0
                                 debt_mtm_value = dv["clean"] + td.debt_notional
                                 debt_summary_rows.append(
                                     debt_summary_row(td, dv["clean"], dv["accrued"], dv["dirty"])
                                 )
+                                debt_status = "priced"
+                            else:
+                                debt_status = "skipped"
                             v.meta["hedged_debt_mtm"] = resolve_hedged_debt_mtm(
                                 td.trade_id, td.hedge, td.debt_deal_number,
                                 v.clean, debt_mtm_value,
@@ -232,6 +239,14 @@ class Portfolio:
                         "[%d/%d] %s  FAILED: %s   priced=%d failed=%d  elapsed %5.1fs",
                         i, n_total, td.trade_id, err, priced_count, failed_count, elapsed,
                     )
+                # Hedged-debt (loan) pricing status, mirroring the IRS line above.
+                if debt_status == "priced":
+                    _log.info(
+                        "        debt %s  priced in %5.2fs (deal %s)",
+                        td.trade_id, debt_dt, td.debt_deal_number,
+                    )
+                elif debt_status == "skipped":
+                    _log.info("        debt %s  skipped (SC -- no debt to value)", td.trade_id)
 
         # Excel and Parquet writers need a tz-naive datetime (UTC seconds).
         run_date = manifest.run_date.replace(tzinfo=None)
