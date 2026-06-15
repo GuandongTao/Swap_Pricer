@@ -83,7 +83,8 @@ def test_spread_accrual_inprogress_period():
     c = _curve(0.04)
     leg_no_spread = OISFloatingLeg(sch, ConstantNotional(1_000_000), c, FixingHistory(hist), ACT_360, NY_FED, spread=0.0)
     leg_spread = OISFloatingLeg(sch, ConstantNotional(1_000_000), c, FixingHistory(hist), ACT_360, NY_FED, spread=0.005)
-    partial = (VAL - sch[0].start).days
+    # Inclusive convention: val_date is counted, so elapsed = partial + 1 day.
+    partial = (VAL - sch[0].start).days + 1
     expected_delta = 1_000_000 * 0.005 * partial / 360.0
     delta = leg_spread.accrued(VAL) - leg_no_spread.accrued(VAL)
     assert delta == pytest.approx(expected_delta, abs=1e-9)

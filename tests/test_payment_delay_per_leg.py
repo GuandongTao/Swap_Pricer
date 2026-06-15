@@ -1,7 +1,8 @@
 """Per-leg payment delay (Bloomberg schema: no shared payment_delay field).
 
 `fixed_payment_delay_bdays` / `floating_payment_delay_bdays` are independent
-ints (default 0). Payment date is based on the unadjusted period end.
+ints (default 0). Payment date is T+N from the **adjusted** period end
+(Bloomberg/ISDA standard).
 """
 
 from datetime import date
@@ -48,13 +49,11 @@ def test_default_zero_delay_both_legs_equal_payment_dates():
 
 def test_per_leg_delay_diverges_payment_dates():
     swap = _swap(fixed_payment_delay_bdays=0, floating_payment_delay_bdays=5)
-    last_uend = swap.fixed.schedule[-1].unadjusted_end  # 2031-06-15
+    last_adj_end = swap.floating.schedule[-1].end  # adjusted period end
     fx_pay = swap.fixed.schedule[-1].payment_date
     fl_pay = swap.floating.schedule[-1].payment_date
-    # Fixed: 0 BD delay -> pay = roll(unadjusted end). Floating: +5 BD from adjusted end.
-    assert fl_pay == NY_FED.add_business_days(
-        NY_FED.roll(last_uend, "ModifiedFollowing"), 5
-    )
+    # T+N is counted from the adjusted period end (Bloomberg/ISDA standard).
+    assert fl_pay == NY_FED.add_business_days(last_adj_end, 5)
     assert fl_pay > fx_pay
     assert swap.meta["fixed_payment_delay_bdays"] == 0
     assert swap.meta["floating_payment_delay_bdays"] == 5

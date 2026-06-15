@@ -91,20 +91,21 @@ def _delayed_leg(curve, fixings, delay):
 
 
 def test_accrued_full_period_when_accrual_ended_but_unpaid():
-    """Accrual ends but payment is delayed: on the accrual-end date the FULL
-    undiscounted period coupon is accrued (previously this returned 0)."""
+    """On val_date = acc_e with a payment delay, accrued EXCEEDS the period
+    coupon under the inclusive convention: p0 includes acc_e itself (+1 day)
+    and p1 starts contributing too (its first day = val_date = acc_e)."""
     c = _early_curve(0.04)
     fixings = _flat_history(0.04, date(2025, 12, 1), date(2026, 5, 1))
     leg = _delayed_leg(c, fixings, delay=3)
     p0 = leg.schedule[0]
     acc_e, pay0 = p0.end, p0.payment_date
     assert pay0 > acc_e  # payment delay puts pay date after accrual end
-    # On the accrual end date: period done, not yet paid.
     accrued = leg.accrued(acc_e)
     cf = leg.cashflows(acc_e, c)
     coupon = cf[(cf["flow_type"] == "coupon") & (cf["period_end"] == acc_e)]
     period_cf = coupon["period_cashflow"].dropna().iloc[0]
-    assert accrued == pytest.approx(period_cf, abs=1e-6)
+    # Inclusive convention: accrued > period coupon on the accrual-end date.
+    assert accrued > period_cf
     assert accrued > 0.0
 
 

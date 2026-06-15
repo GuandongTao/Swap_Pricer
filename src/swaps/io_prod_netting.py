@@ -49,13 +49,13 @@ Hard errors (raised, never silently blanked):
 
 from __future__ import annotations
 
-import csv
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from .io_prod import (
     CME_NAME, SOURCE_NAME, VERSION_STAMP, _CCID_TAIL, _fmt, _ccid,
+    write_csv_no_trailing_newline,
 )
 from .loaders.base import TradeDef
 from .netting_db import NettingRow
@@ -206,9 +206,9 @@ def _row_for_group(
     liab_ccid = _ccid(netting_entity, rc, NAT_ACCT_NETTING_LIABILITY)
 
     cells: list[object | None] = [None] * N_NETTING_COLS
-    cells[_NCOL["Field"]] = "Position Netting"
+    cells[_NCOL["Field"]] = "IRS Position Netting"
     cells[_NCOL["As of Date"]] = val_date
-    cells[_NCOL["Product"]] = "IRS"
+    cells[_NCOL["Product"]] = "IR"
     cells[_NCOL["Entity"]] = "American Express Company"
     cells[_NCOL["Oracle Entity Code"]] = netting_entity
     cells[_NCOL["Counterparty"]] = cpty
@@ -279,11 +279,5 @@ def write_netting_csv(
     # Footer count = number of netting entries (rows), one per netting_id.
     footer = _footer(rows, n_entries=len(rows))
 
-    with out_path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(header_row)
-        w.writerow(NETTING_FIELDS)
-        for r in rows:
-            w.writerow(r)
-        w.writerow(footer)
+    write_csv_no_trailing_newline(out_path, [header_row, NETTING_FIELDS, *rows, footer])
     return out_path

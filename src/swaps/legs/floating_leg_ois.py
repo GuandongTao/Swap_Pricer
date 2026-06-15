@@ -299,13 +299,18 @@ class OISFloatingLeg(Leg):
 
         A period accrues from its start until its **payment** date (not its
         accrual end). Compounding and the spread run to ``min(val_date,
-        accrual_end)``, so a period whose accrual has ended but has not yet paid
-        (``accrual_end <= val_date < payment_date``) contributes its **full,
-        undiscounted** period coupon -- it is owed but unpaid."""
+        accrual_end)`` **inclusive** (client convention: both accrual start and
+        val_date are counted). Weekend/holiday calendar days carry the preceding
+        business day's rate with weight 1. A period whose accrual has ended but
+        has not yet paid (``accrual_end <= val_date < payment_date``) contributes
+        its **full, undiscounted** period coupon -- it is owed but unpaid."""
         acc_s, acc_e = self._acc(p)
         if not (acc_s <= val_date < p.payment_date):
             return None
-        eff_end = min(val_date, acc_e)
+        # eff_end is an exclusive upper bound; +1 day makes val_date inclusive.
+        # Weekend/holiday days are covered by the preceding business day's row
+        # carrying the extra calendar day in its capped weight.
+        eff_end = min(val_date, acc_e) + timedelta(days=1)
         rows = self._period_fixing_rows(p, val_date)
         if not rows:
             return None
