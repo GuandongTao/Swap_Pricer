@@ -137,6 +137,10 @@ def _fmt(v: object) -> str:
 def debt_summary_row(td: TradeDef, clean: float, accrued: float, dirty: float) -> dict[str, object]:
     """Build one Debt_Summary record from a trade's debt block + computed values."""
     freq = td.debt_frequency or td.fixed_frequency
+    # Show the NET valuation coupon (debt_fixed_rate - floating_spread), in
+    # percent, rounded to 6dp to drop binary-float display noise (5.23 not
+    # 5.229999...). This matches the coupon actually used to value the bond.
+    net_coupon_pct = round((td.debt_fixed_rate - td.floating_spread) * 100.0, 6)
     return {
         "Entity": f"AXP {td.oracle_entity_code}".strip(),
         "Oracle Entity": td.oracle_entity_code,
@@ -147,7 +151,7 @@ def debt_summary_row(td: TradeDef, clean: float, accrued: float, dirty: float) -
         "Rate Type": td.debt_rate_type,
         "Settlement Date": td.debt_settlement_date,
         "Debt Maturity Date": td.maturity_date,
-        "Fixed Coupon": td.debt_fixed_rate * 100.0,   # output in percent (5.625)
+        "Fixed Coupon": net_coupon_pct,   # net coupon in percent (5.625)
         "Local Currency Outstanding": td.debt_notional,
         "USD Outstanding": td.debt_notional,
         "Counterparty": td.debt_counterparty,
