@@ -120,20 +120,30 @@ class SwapPricer:
         )
 
     def _dv01(self, swap: Swap, md: MarketData) -> float:
-        """Parallel-DV01: shift both SOFR (discount) and FF (projection) curves by +1bp.
+        """Parallel-DV01 via a symmetric (central) ±1bp bump of both the SOFR
+        (discount) and FF (projection) curves:
 
-        Returns the *loss* under the bump — i.e. ``PV(base) - PV(bumped)``.
-        Positive DV01 means the position drops in value when rates rise.
+            DV01 = [PV(-1bp) - PV(+1bp)] / 2
+
+        i.e. the average of the down-bump gain and the up-bump loss per 1bp.
+        Positive DV01 means the position drops in value when rates rise. The
+        two-sided difference cancels the second-order (convexity) term that a
+        one-sided bump leaves in.
         """
-        _, _, base = self._signed_pv(swap, md)
-        bumped_disc = md.discount_curve.bumped(self.bump_size)
-        bumped_proj = md.projection_curve.bumped(self.bump_size)
-        # Rebuild the swap with a floating leg pointing at the bumped projection curve.
-        bumped_floating = swap.floating.with_projection_curve(bumped_proj)
+        pv_up = self._bumped_pv(swap, md, self.bump_size)
+        pv_down = self._bumped_pv(swap, md, -self.bump_size)
+        return (pv_down - pv_up) / 2.0
+
+    def _bumped_pv(self, swap: Swap, md: MarketData, delta: float) -> float:
+        """Signed PV with both curves shifted by ``delta`` (in absolute rate
+        terms; +1bp = +1e-4). The floating leg is repointed at the bumped
+        projection curve so forwards move with the bump."""
+        bumped_disc = md.discount_curve.bumped(delta)
+        bumped_proj = md.projection_curve.bumped(delta)
         bumped_swap = Swap(
             trade_id=swap.trade_id,
             fixed=swap.fixed,
-            floating=bumped_floating,
+            floating=swap.floating.with_projection_curve(bumped_proj),
             pay_fixed=swap.pay_fixed,
             meta=dict(swap.meta),
         )
@@ -143,5 +153,5 @@ class SwapPricer:
             projection_curve=bumped_proj,
             fixings=md.fixings,
         )
-        _, _, bumped = self._signed_pv(bumped_swap, bumped_md)
-        return base - bumped
+        _, _, pv = self._signed_pv(bumped_swap, bumped_md)
+        return pv
