@@ -10,7 +10,7 @@ flowchart TD
         A1["Market Curves\nSOFR + Fed Funds zero rates\nat standard tenors: ON, 1W, 1M … 30Y"]
         A2["Historical Fixings\nActual past Fed Funds daily rates\n(published by NY Fed each morning)"]
         A3["Trade Book  (~30 swaps)\nNotional, fixed rate, start/maturity,\nday-count, payment conventions"]
-        A4["Reference Data\nEntities, netting agreements,\nhedged debt fair values"]
+        A4["Reference Data\nEntities, netting agreements.\nHedged-debt terms are inline on each\nLH trade (debt_* block) — valued here,\nnot supplied as fair values"]
     end
 
     subgraph BOOTSTRAP["📐 Curve Bootstrap  (done separately for SOFR and Fed Funds)"]
@@ -168,12 +168,13 @@ flowchart TD
     subgraph REF["📚 Reference Data Resolution"]
         R1["Entity RC lookup\n(Entity_Reference_Report.csv)\n→ CCID segments"]
         R2["Netting DB\n(Netting_Database.csv)\n→ netting rules, entity codes"]
-        R3["Hedged Debt\n(Deal_Numbers.csv +\nDeal_Summary_DATE.xlsx)\n→ Long/Short MTM"]
+        R3["Hedged Debt (LH trades)\nvalue_debt() prices the inline debt_* bond\n(FixedLeg, principal-at-maturity, SOFR)\n→ AW = Clean + Outstanding\n→ writes Debt_Summary_DATE.csv\nSC → AW = −swap clean"]
     end
 
     subgraph WRITE["✍️ Output Writing"]
         W1["io_prod.py\nIRS_Valuation_DATE-00001.csv\n49 columns, header + footer"]
         W2["io_prod_netting.py\nIRS_Netting_DATE-00001.csv\n21 columns, aggregated by netting ID"]
+        W2b["debt.py\nDebt_Summary_DATE.csv\ncomputed Clean/Accrued/Dirty per LH debt"]
         W3["io_excel.py\nportfolio_DATE.xlsx\n(Summary, FloatingCF, FixedCF, Curves)\n+ detail/<trade>.xlsx per trade"]
         W4["io_parquet.py\nsummary / floating_cf /\nfixed_cf / curves .parquet"]
         W5["manifest_DATE.json\ngit_sha, file hashes,\ntrade count, per-trade timings,\nwarnings, errors"]

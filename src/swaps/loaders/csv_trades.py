@@ -28,17 +28,23 @@ _DATE_FIELDS = {
     "start_date", "maturity_date", "deal_date",
     "fixed_first_period_accrual_end_date",
     "floating_first_period_accrual_end_date",
+    "debt_settlement_date", "debt_first_period_accrual_end_date",
 }
-_FLOAT_FIELDS = {"notional", "fixed_rate", "floating_spread"}
+_FLOAT_FIELDS = {
+    "notional", "fixed_rate", "floating_spread",
+    "debt_fixed_rate", "debt_notional",
+}
 _BOOL_FIELDS = {"pay_fixed", "intercompany"}
 _INT_FIELDS = {
     "fixed_payment_delay_bdays", "floating_payment_delay_bdays",
     "floating_reset_lag_bdays", "floating_lockout_bdays",
+    "debt_payment_delay_bdays",
 }
 _DATELIST_FIELDS = {
     "fixed_calculation_calendar_extras", "fixed_payment_calendar_extras",
     "floating_calculation_calendar_extras", "floating_fixing_calendar_extras",
     "floating_payment_calendar_extras",
+    "debt_calculation_calendar_extras", "debt_payment_calendar_extras",
 }
 _FIELD_NAMES = {f.name for f in fields(TradeDef)} - {"meta"}
 _REQUIRED = {

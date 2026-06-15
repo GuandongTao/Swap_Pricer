@@ -115,7 +115,7 @@ def _run_one(
             write_debug=write_debug,
             entity_rc=entity_rc,
             netting_db=netting_db,
-            debt_dir=dd / "debt",
+            folder_suffix=" BBG" if pillar_dates_df else "",
         )
         _wlog.info("===== val_date %s : run DONE (status=%s) =====",
                    val_date, manifest.status)

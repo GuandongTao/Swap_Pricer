@@ -269,9 +269,9 @@ def _row_for(
         nrow = netting_db[nid]
         cells[_COL["Cash Flow Netting Allowed"]] = nrow.cash_flow_netting_allowed
         cells[_COL["Position Netting Allowed"]] = nrow.position_netting_allowed
-    # Hedged Debt MTM (AW): Long -> hedged debt Clean, Short -> swap clean,
-    # resolved in the Portfolio runner and stashed on v.meta. Falls back to the
-    # legacy fixed-leg PV when not set (e.g. direct write_prod_csv calls).
+    # Hedged Debt MTM (AW): LH -> hedged debt Clean + Outstanding, SC -> -swap
+    # clean, resolved in the Portfolio runner and stashed on v.meta. Falls back
+    # to the legacy fixed-leg PV when not set (e.g. direct write_prod_csv calls).
     cells[_COL["Hedged Debt MTM"]] = v.meta.get("hedged_debt_mtm", v.pv_fixed)
     cells[_COL["Balance Sheet CCID"]] = bs_ccid
     cells[_COL["PL OCI CCID"]] = pl_ccid

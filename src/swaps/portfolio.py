@@ -14,8 +14,8 @@ import pandas as pd
 from .calendar_us import month_end_curve_date
 from .curve import ZeroCurve
 from .debt import (
-    DEAL_NUMBERS_FILE, debt_summary_filename, load_debt_mtm,
-    load_deal_number_map, resolve_hedged_debt_mtm,
+    debt_summary_filename, debt_summary_row,
+    resolve_hedged_debt_mtm, value_debt, write_debt_summary_csv,
 )
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
 from .io_parquet import write_parquet_outputs
@@ -81,7 +81,7 @@ class Portfolio:
         write_prod: bool = True,
         entity_rc: dict[str, str] | None = None,
         netting_db: dict[str, NettingRow] | None = None,
-        debt_dir: str | Path | None = None,
+        folder_suffix: str = "",
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -91,9 +91,12 @@ class Portfolio:
         #   <out_dir>/valdate_<val_date>_rundate_<run_date>/
         #       {portfolio_*.xlsx, detail/, debug/, parquet/, manifest_*.json}
         base_out = Path(out_dir)
+        # folder_suffix marks the data source in the folder name (e.g. " BBG"
+        # when curves came from --pillar-dates-df / Bloomberg DF files).
         run_folder = (
             f"valdate_{val_date.isoformat()}"
             f"_rundate_{manifest.run_date:%Y-%m-%d}"
+            f"{folder_suffix}"
         )
         out_dir = base_out / run_folder
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -136,30 +139,11 @@ class Portfolio:
             time.perf_counter() - run_start,
         )
 
-        # Hedged-debt lookups for col AW (only when writing the prod feed).
-        # Files are optional here: a Long trade that can't resolve raises a
-        # per-trade error in the loop below (recorded in manifest.errors[]).
-        deal_map: dict[str, str] = {}
-        debt_mtm: dict[str, float] = {}
-        if write_prod and debt_dir is not None:
-            dd = Path(debt_dir)
-            dnp = dd / DEAL_NUMBERS_FILE
-            if dnp.exists():
-                deal_map = load_deal_number_map(dnp)
-            else:
-                _log.warning(
-                    "Deal-number map not found (%s) -> Long-hedge trades will error", dnp
-                )
-            # Debt summary is dated like the curve; reuse the month-end fallback
-            # so a weekend/holiday month-end pulls the previous business day's file.
-            ds_date = month_end_curve_date(val_date) or val_date
-            dsp = dd / debt_summary_filename(ds_date)
-            if dsp.exists():
-                debt_mtm = load_debt_mtm(dsp)
-            else:
-                _log.warning(
-                    "Debt summary not found (%s) -> Long-hedge trades will error", dsp
-                )
+        # Hedged debt for col AW (only when writing the prod feed) is now VALUED
+        # in-process per LH trade (swaps.debt) from each trade's inline debt_*
+        # block, then written to Debt_Summary_<val_date>.csv as a run artifact.
+        # Collected in the pricing loop below.
+        debt_summary_rows: list[dict[str, object]] = []
 
         valuations: list[SwapValuation] = []
         swaps_by_id: dict[str, "Swap"] = {}
@@ -206,11 +190,18 @@ class Portfolio:
                             manifest.warnings.append(w)
                         v = self.pricer.price(swap, md)
                         if write_prod:
-                            # Per-trade hard error if hedge is blank/unknown or a
-                            # Long trade can't resolve to a debt Clean.
+                            # Per-trade hard error if hedge is blank/unknown or an
+                            # LH trade's debt block is missing/unpriceable.
+                            debt_mtm_value: float | None = None
+                            if (td.hedge or "").strip().upper() == "LH":
+                                dv = value_debt(td, sofr, val_date)
+                                debt_mtm_value = dv["clean"] + td.debt_notional
+                                debt_summary_rows.append(
+                                    debt_summary_row(td, dv["clean"], dv["accrued"], dv["dirty"])
+                                )
                             v.meta["hedged_debt_mtm"] = resolve_hedged_debt_mtm(
-                                td.trade_id, td.hedge, td.quantum_deal_number,
-                                v.clean, deal_map, debt_mtm,
+                                td.trade_id, td.hedge, td.debt_deal_number,
+                                v.clean, debt_mtm_value,
                             )
                         valuations.append(v)
                         swaps_by_id[v.trade_id] = swap
@@ -259,6 +250,14 @@ class Portfolio:
                     entity_rc=entity_rc, netting_db=netting_db,
                 )
             manifest.outputs["prod_csv"] = str(prod_path)
+            # Debt_Summary artifact: the computed Clean/Accrued/Dirty for every
+            # LH-hedged debt that fed col AW (empty file -- title + headers --
+            # when no LH trades). Replaces the externally-produced Deal_Summary.
+            debt_summary_path = out_dir / debt_summary_filename(val_date)
+            _log.info("Writing Debt Summary -> %s (%d debts)", debt_summary_path, len(debt_summary_rows))
+            with _timed(timings, "write_debt_summary"):
+                write_debt_summary_csv(debt_summary_path, debt_summary_rows)
+            manifest.outputs["debt_summary_csv"] = str(debt_summary_path)
             # IRS Netting feed: same gating as IRS Valuation. Requires both the
             # netting DB (per-netting-id fields) and the entity_rc lookup
             # (CCID RC). If either is missing, skip with a warning rather than

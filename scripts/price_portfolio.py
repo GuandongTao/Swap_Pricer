@@ -59,12 +59,6 @@ def main(argv: list[str] | None = None) -> int:
              "IRS Netting feed is skipped (warning recorded to manifest).",
     )
     p.add_argument(
-        "--debt-dir", default=str(ROOT / "data" / "debt"),
-        help="Directory holding Deal_Numbers.csv and Deal_Summary_<val_date>.xlsx, "
-             "used to fill Hedged Debt MTM (col AW) for Long-hedge trades. Missing "
-             "files -> Long-hedge trades error per-trade (manifest.errors).",
-    )
-    p.add_argument(
         "--debug", action="store_true",
         help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
              "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
@@ -105,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
     data_dir = Path(args.data_dir)
     out_dir = Path(args.out_dir)
 
+    # Mark Bloomberg-DF-sourced runs in the output folder name (" BBG").
+    folder_suffix = " BBG" if args.pillar_dates_df else ""
     if args.pillar_dates_df:
         curve_loader = DatedDFCurveLoader(data_dir / "curves")
     elif args.pillar_dates:
@@ -144,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
             write_parquet=args.debug,
             entity_rc=entity_rc,
             netting_db=netting_db,
-            debt_dir=args.debt_dir,
+            folder_suffix=folder_suffix,
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")
