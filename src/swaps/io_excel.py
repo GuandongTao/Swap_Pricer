@@ -126,6 +126,7 @@ def write_trade_debug_workbook(
     ff: ZeroCurve,
     fixings: FixingHistory,
     grid_days: int | None = None,
+    debt_leg: "FixedLeg | None" = None,
 ) -> None:
     """Per-trade debug workbook: dump every intermediate frame as a separate tab.
 
@@ -139,6 +140,13 @@ def write_trade_debug_workbook(
       FloatingFixings                        -- per-fixing rows BEFORE compounding (most useful for hand-checks)
       FloatingPeriods                        -- per-period historical product * projected product
       FloatingCF / FixedCF                   -- final cashflow tables (with discount factors)
+      DebtCF / DebtAccrued                   -- (LH trades only) the hedged bond's
+                                               cashflow table and accrued breakdown,
+                                               same format as FixedCF / Accrued.
+                                               These are the bond-holder-side leg
+                                               figures (positive); the obligor sign
+                                               is applied when aggregating to AW /
+                                               the Debt_Summary.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,6 +176,12 @@ def write_trade_debug_workbook(
         swap.floating.period_cashflows(val_date, sofr).to_excel(w, sheet_name="FloatingCF_byPeriod", index=False)
         swap.fixed.cashflows(val_date, sofr).to_excel(w, sheet_name="FixedCF", index=False)
         _accrued_debug_frame(swap, val_date).to_excel(w, sheet_name="Accrued", index=False)
+        # Hedged debt (LH trades): same cashflow/accrued format as the fixed leg.
+        if debt_leg is not None:
+            debt_leg.cashflows(val_date, sofr).to_excel(w, sheet_name="DebtCF", index=False)
+            pd.DataFrame([debt_leg.accrued_debug(val_date)]).to_excel(
+                w, sheet_name="DebtAccrued", index=False
+            )
 
 
 def write_trade_detail_workbook(

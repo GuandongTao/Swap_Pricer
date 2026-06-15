@@ -26,7 +26,7 @@ from .manifest import RunManifest
 from .market_data import MarketData
 from .netting_db import NettingRow
 from .pricer import SwapPricer, SwapValuation
-from .trade_builder import build_swap
+from .trade_builder import build_debt_leg, build_swap
 
 _log = logging.getLogger(__name__)
 
@@ -331,7 +331,18 @@ class Portfolio:
                         continue
                     t0 = time.perf_counter()
                     p = debug_dir / f"{v.trade_id}_debug.xlsx"
-                    write_trade_debug_workbook(p, swaps_by_id[v.trade_id], val_date, sofr, ff, fixings)
+                    # LH trades: include the hedged bond's cashflows/accrued as
+                    # extra tabs in the same workbook.
+                    td_dbg = trades_by_id.get(v.trade_id)
+                    debt_leg = (
+                        build_debt_leg(td_dbg)
+                        if td_dbg is not None and (td_dbg.hedge or "").strip().upper() == "LH"
+                        else None
+                    )
+                    write_trade_debug_workbook(
+                        p, swaps_by_id[v.trade_id], val_date, sofr, ff, fixings,
+                        debt_leg=debt_leg,
+                    )
                     _log.info("  debug  [%d/%d] %s_debug.xlsx (%.2fs)", i, len(valuations), v.trade_id,
                               time.perf_counter() - t0)
                 manifest.outputs["debug_dir"] = str(debug_dir)
