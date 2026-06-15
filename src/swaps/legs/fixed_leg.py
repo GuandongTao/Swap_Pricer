@@ -49,6 +49,14 @@ class FixedLeg(Leg):
         return p.unadjusted_start, p.unadjusted_end
 
     def cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
+        """Return one coupon row per period plus any principal-exchange rows.
+
+        Columns: ``flow_type``, ``accrual_start/end``, ``payment_date``,
+        ``period_days``, ``day_count_fraction``, ``notional``, ``coupon_rate``,
+        ``payment_amount``, ``df_to_payment``, ``discounted_cashflow``.
+        Past payments (``payment_date <= val_date``) have NaN DF and zero
+        discounted cashflow.
+        """
         rows = []
         for p in self.schedule:
             s, e = self._acc(p)

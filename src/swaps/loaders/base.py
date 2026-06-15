@@ -23,12 +23,14 @@ class MissingPreviousCloseError(RuntimeError):
 
 class CurveLoader(ABC):
     @abstractmethod
-    def load(self, val_date: date, curve_name: str) -> ZeroCurve: ...
+    def load(self, val_date: date, curve_name: str) -> ZeroCurve:
+        """Load the zero curve for ``curve_name`` (e.g. ``"SOFR"``, ``"FEDFUNDS"``) as of ``val_date``."""
 
 
 class FixingLoader(ABC):
     @abstractmethod
-    def load(self, index_name: str) -> FixingHistory: ...
+    def load(self, index_name: str) -> FixingHistory:
+        """Load the full historical fixing series for ``index_name`` (e.g. ``"FEDFUNDS"``)."""
 
 
 @dataclass
@@ -140,7 +142,9 @@ class TradeDef:
 
 class TradeLoader(ABC):
     @abstractmethod
-    def load_all(self) -> list[TradeDef]: ...
+    def load_all(self) -> list[TradeDef]:
+        """Return every trade definition available from this source."""
 
     @abstractmethod
-    def load(self, trade_id: str) -> TradeDef: ...
+    def load(self, trade_id: str) -> TradeDef:
+        """Return the single trade matching ``trade_id``. Raises ``KeyError`` if not found."""

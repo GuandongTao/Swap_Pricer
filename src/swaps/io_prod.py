@@ -64,7 +64,7 @@ _CCID_TAIL = ("000000", "0000", "000000", "000000", "000000", "0000")
 
 
 def _ccid(entity: str, rc: str, natural_account: str) -> str:
-    """Build the 9-segment dash-joined CCID string."""
+    """Build the 9-segment dash-joined CCID: ``Entity-RC-NaturalAccount`` + six zero-padded defaults."""
     return "-".join([entity, rc, natural_account, *_CCID_TAIL])
 
 
@@ -163,7 +163,7 @@ _SUM_COLS: tuple[int, ...] = (
 )
 
 
-def _fmt(v) -> str:
+def _fmt(v: object) -> str:
     """Render a value for the CSV. ``None`` / NaN -> blank string.
 
     Floats are emitted via ``repr()``: the shortest decimal that round-trips
@@ -189,6 +189,7 @@ def _row_for(
     entity_rc: dict[str, str] | None = None,
     netting_db: dict[str, NettingRow] | None = None,
 ) -> list[str]:
+    """Build the 49-cell data row for one trade, matching the ``PROD_FIELDS`` column order."""
     is_cme = (td.current_counterparty == CME_NAME)
     npv = v.dirty
     da = npv if npv > 0 else None
@@ -277,6 +278,7 @@ def _row_for(
 
 
 def _footer(rows: list[list[str]], n_trades: int) -> list[str]:
+    """Build the ``T``-prefixed footer row with column sums for all ``_SUM_COLS``."""
     cells = [""] * N_COLS
     cells[0] = "T"
     cells[1] = str(n_trades)

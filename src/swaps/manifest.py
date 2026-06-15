@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 def _git_sha() -> str:
+    """Return the current HEAD commit SHA, or ``"unversioned"`` if git is unavailable."""
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent, stderr=subprocess.DEVNULL
@@ -21,6 +22,7 @@ def _git_sha() -> str:
 
 
 def file_sha256(path: str | Path) -> str:
+    """Return the hex SHA-256 digest of the file at ``path``."""
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 16), b""):
@@ -47,6 +49,7 @@ class RunManifest:
 
     @staticmethod
     def new(val_date: date) -> "RunManifest":
+        """Create a fresh manifest for a new run, capturing the current time and git SHA."""
         now = datetime.now(timezone.utc)
         return RunManifest(
             run_id=str(uuid.uuid4()),
@@ -56,10 +59,12 @@ class RunManifest:
         )
 
     def add_input(self, label: str, path: str | Path) -> None:
+        """Record an input file's SHA-256 (or ``"missing"`` if the file does not exist)."""
         p = Path(path)
         self.input_files[label] = file_sha256(p) if p.exists() else "missing"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
+        """Serialize to a JSON-safe dict with all ``date``/``datetime`` fields converted to ISO strings."""
         d = asdict(self)
         d["val_date"] = self.val_date.isoformat()
         d["run_date"] = self.run_date.isoformat()
@@ -68,4 +73,5 @@ class RunManifest:
         return d
 
     def write(self, path: str | Path) -> None:
+        """Write the manifest as a pretty-printed JSON file to ``path``."""
         Path(path).write_text(json.dumps(self.to_dict(), indent=2, default=str), encoding="utf-8")

@@ -39,7 +39,7 @@ _DATELIST_FIELDS = {
 _FIELD_NAMES = {f.name for f in fields(TradeDef)} - {"meta"}
 
 
-def _to_date(v) -> date:
+def _to_date(v: object) -> date:
     if isinstance(v, date) and not isinstance(v, datetime):
         return v
     if isinstance(v, datetime):
@@ -47,7 +47,7 @@ def _to_date(v) -> date:
     return datetime.strptime(str(v), "%Y-%m-%d").date()
 
 
-def _to_date_list(v) -> list[date]:
+def _to_date_list(v: object) -> list[date]:
     if v is None:
         return []
     if not isinstance(v, list):
@@ -55,7 +55,7 @@ def _to_date_list(v) -> list[date]:
     return [_to_date(x) for x in v]
 
 
-def _parse(raw: dict, path: Path) -> TradeDef:
+def _parse(raw: dict[str, object], path: Path) -> TradeDef:
     missing = REQUIRED - raw.keys()
     if missing:
         raise ValueError(f"Trade file {path} missing required fields: {sorted(missing)}")

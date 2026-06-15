@@ -116,7 +116,7 @@ class OISFloatingLeg(Leg):
             adjust=self.adjust,
         )
 
-    def _principal_rows(self, val_date: date, discount_curve: ZeroCurve) -> tuple[list[dict], list[dict]]:
+    def _principal_rows(self, val_date: date, discount_curve: ZeroCurve) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
         """Return (start_rows, end_rows) -- principal-exchange rows for this leg.
 
         Sign convention: start = -notional (paid out at issuance), end = +notional
@@ -194,7 +194,7 @@ class OISFloatingLeg(Leg):
 
     def _period_fixing_rows(
         self, p: AccrualPeriod, val_date: date
-    ) -> list[dict]:
+    ) -> list[dict[str, object]]:
         acc_s, acc_e = self._acc(p)
         accrual_days = self._fixing_dates_for_period(p)
         if not accrual_days:
@@ -245,7 +245,16 @@ class OISFloatingLeg(Leg):
 
     # ------------------------------------------------------------------ public
     def cashflows(self, val_date: date, discount_curve: ZeroCurve) -> pd.DataFrame:
-        all_rows: list[dict] = []
+        """Return one row per daily fixing across all periods, with period-level
+        aggregates (compounded coupon, cashflow, DF) on the last fixing row of each period.
+
+        Columns: ``period_start/end``, ``payment_date``, ``fixing_date``,
+        ``accrual_start/end``, ``day_count``, ``reset_rate``, ``rate_source``,
+        ``implied_daily_fwd``, ``df_to_fixing/payment``, ``spread``,
+        ``compounded_coupon``, ``effective_coupon``, ``period_cashflow``,
+        ``discounted_cashflow``.
+        """
+        all_rows: list[dict[str, object]] = []
         for p in self.schedule:
             rows = self._period_fixing_rows(p, val_date)
             if not rows:
@@ -328,8 +337,11 @@ class OISFloatingLeg(Leg):
         }
 
     def accrued(self, val_date: date) -> float:
-        # Sum over periods: a just-ended-but-unpaid period and the next, already
-        # started period can both be accruing at once (with a payment delay).
+        """Total undiscounted accrued interest across all currently-accruing periods.
+
+        Both a just-ended-but-unpaid period and the already-started next period
+        can contribute simultaneously when a payment delay is in effect.
+        """
         return sum(
             d["accrued"]
             for d in (self._period_accrued_detail(p, val_date) for p in self.schedule)

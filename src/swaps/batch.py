@@ -25,8 +25,14 @@ _log = logging.getLogger(__name__)
 
 @dataclass
 class BatchResult:
+    """Result summary for a single valuation date within a batch run.
+
+    ``status`` is one of ``"ok"``, ``"partial"`` (some trades errored),
+    ``"error"`` (run failed entirely), or ``"skipped"`` (no curve file found).
+    """
+
     val_date: date
-    status: str  # "ok" | "partial" | "error"
+    status: str  # "ok" | "partial" | "error" | "skipped"
     run_dir: str | None
     manifest_path: str | None
     trade_count: int
@@ -48,8 +54,13 @@ def _run_one(
     entity_rc_path: str | None = None,
     netting_db_path: str | None = None,
 ) -> BatchResult:
-    """Process-pool worker. Builds loaders *inside* the worker so nothing
-    unpicklable (curves, loader objects) crosses the process boundary."""
+    """Process-pool worker: price one ``val_date`` in an isolated subprocess.
+
+    All loaders are constructed inside the worker so no unpicklable objects
+    (curve data, open file handles) cross the process boundary. Returns a
+    ``BatchResult``; never raises — exceptions are caught and surfaced via
+    ``BatchResult.exception``.
+    """
     # Imports are inside the worker so the child process sets them up cleanly.
     import logging as _logging
     import sys as _sys
