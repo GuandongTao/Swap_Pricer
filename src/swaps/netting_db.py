@@ -42,6 +42,12 @@ _PRODUCT_KEEP = "Swap"
 
 @dataclass(frozen=True)
 class NettingRow:
+    """One row from ``Netting_Database.csv``, keyed by ``netting_id``.
+
+    Carries the per-netting-group flags and entity names used by both the
+    IRS Valuation and IRS Netting output feeds.
+    """
+
     netting_id: str
     cash_flow_netting_allowed: str
     position_netting_allowed: str

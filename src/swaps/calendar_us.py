@@ -36,10 +36,12 @@ def _last_weekday(year: int, month: int, weekday: int) -> date:
 
 
 def _shift_if_sunday(d: date) -> date:
+    """Return the following Monday if ``d`` is a Sunday, otherwise ``d`` unchanged."""
     return d + timedelta(days=1) if d.weekday() == 6 else d
 
 
 def _fed_holidays_for_year(y: int) -> list[date]:
+    """Return all NY Fed holidays for year ``y`` as a list of calendar dates."""
     h: list[date] = [
         _shift_if_sunday(date(y, 1, 1)),                    # New Year's
         _nth_weekday(y, 1, 0, 3),                           # MLK (3rd Mon Jan)
@@ -59,6 +61,7 @@ def _fed_holidays_for_year(y: int) -> list[date]:
 
 @lru_cache(maxsize=1)
 def _holiday_set(start_year: int = 1990, end_year: int = 2100) -> frozenset[date]:
+    """Build and cache the complete NY Fed holiday set from ``start_year`` to ``end_year``."""
     s: set[date] = set()
     for y in range(start_year, end_year + 1):
         s.update(_fed_holidays_for_year(y))
@@ -74,9 +77,11 @@ class USCalendar:
         self._holidays: frozenset[date] = _holiday_set() | frozenset(extra_holidays)
 
     def is_business_day(self, d: date) -> bool:
+        """Return ``True`` if ``d`` is a weekday and not a NY Fed holiday."""
         return d.weekday() < 5 and d not in self._holidays
 
     def add_business_days(self, d: date, n: int) -> date:
+        """Return the date ``n`` business days after (or before, if negative) ``d``."""
         step = 1 if n >= 0 else -1
         remaining = abs(n)
         cur = d
@@ -87,18 +92,21 @@ class USCalendar:
         return cur
 
     def next_business_day(self, d: date) -> date:
+        """Return the first business day on or after ``d``."""
         cur = d
         while not self.is_business_day(cur):
             cur += timedelta(days=1)
         return cur
 
     def prev_business_day(self, d: date) -> date:
+        """Return the last business day on or before ``d``."""
         cur = d
         while not self.is_business_day(cur):
             cur -= timedelta(days=1)
         return cur
 
     def roll(self, d: date, bdc: BusinessDayConvention) -> date:
+        """Adjust ``d`` to a business day using the given business-day convention."""
         if bdc in ("None", "NoAdjust") or self.is_business_day(d):
             return d
         if bdc == "Following":

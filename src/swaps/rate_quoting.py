@@ -26,6 +26,9 @@ class RateQuoting(ABC):
 
 
 class ContinuousACT360(RateQuoting):
+    """Continuously compounded, ACT/360 day count. ``DF = exp(-r * days/360)``.
+    Default convention; benchmarked against Bloomberg for USD SOFR/FF curves."""
+
     name = "ContinuousACT360"
 
     def rate_to_df(self, rate: float, days: int) -> float:
@@ -36,6 +39,8 @@ class ContinuousACT360(RateQuoting):
 
 
 class SimpleACT360(RateQuoting):
+    """Simple (money-market) rate, ACT/360. ``DF = 1 / (1 + r * days/360)``."""
+
     name = "SimpleACT360"
 
     def rate_to_df(self, rate: float, days: int) -> float:
@@ -46,6 +51,8 @@ class SimpleACT360(RateQuoting):
 
 
 class ContinuousACT365(RateQuoting):
+    """Continuously compounded, ACT/365 day count. ``DF = exp(-r * days/365)``."""
+
     name = "ContinuousACT365"
 
     def rate_to_df(self, rate: float, days: int) -> float:
@@ -56,6 +63,8 @@ class ContinuousACT365(RateQuoting):
 
 
 class AnnualCompoundedACT365(RateQuoting):
+    """Annually compounded, ACT/365. ``DF = (1 + r)^(-days/365)``."""
+
     name = "AnnualCompoundedACT365"
 
     def rate_to_df(self, rate: float, days: int) -> float:
@@ -66,7 +75,7 @@ class AnnualCompoundedACT365(RateQuoting):
 
 
 class AnnualCompoundedACT360(RateQuoting):
-    """DF(T) = (1 + r)^(-T_days / 360). Time measured ACT/360, compounded annually."""
+    """Annually compounded, ACT/360. ``DF = (1 + r)^(-days/360)``."""
 
     name = "AnnualCompoundedACT360"
 

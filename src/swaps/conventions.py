@@ -24,6 +24,8 @@ class DayCount(ABC):
 
 
 class Act360(DayCount):
+    """Actual/360: actual days divided by a fixed 360-day year. Standard for USD OIS."""
+
     name = "ACT/360"
 
     def year_fraction(self, d1: date, d2: date) -> float:
@@ -31,6 +33,8 @@ class Act360(DayCount):
 
 
 class Act365F(DayCount):
+    """Actual/365 Fixed: actual days divided by a fixed 365-day year."""
+
     name = "ACT/365F"
 
     def year_fraction(self, d1: date, d2: date) -> float:
@@ -38,7 +42,7 @@ class Act365F(DayCount):
 
 
 class Thirty360(DayCount):
-    """30/360 ISDA (a.k.a. bond basis)."""
+    """30/360 ISDA (bond basis): months treated as 30 days, year as 360."""
 
     name = "30/360"
 
@@ -49,7 +53,7 @@ class Thirty360(DayCount):
 
 
 class ThirtyE360(DayCount):
-    """30E/360 (European)."""
+    """30E/360 European: like 30/360 but both end-days are capped at 30."""
 
     name = "30E/360"
 
@@ -60,6 +64,9 @@ class ThirtyE360(DayCount):
 
 
 class ActActIsda(DayCount):
+    """Actual/Actual ISDA: splits each period across calendar-year boundaries,
+    dividing by 365 or 366 depending on whether that year is a leap year."""
+
     name = "ACT/ACT-ISDA"
 
     def year_fraction(self, d1: date, d2: date) -> float:
