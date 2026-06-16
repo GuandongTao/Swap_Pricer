@@ -153,6 +153,10 @@ class TradeDef:
     debt_deal_number: str = ""
     debt_fixed_rate: float = 0.0          # bond coupon (decimal, e.g. 0.05625)
     debt_notional: float = 0.0            # USD Outstanding (face)
+    # Credit/discounting spread (decimal, may be negative) added on top of the
+    # Fed Funds rate when discounting the debt: DF uses FF + this spread. 0 = pure
+    # Fed Funds. A positive spread lowers the debt's PV magnitude.
+    debt_discount_spread: float = 0.0
     debt_settlement_date: date | None = None  # bond issue/dated date (accrual anchor)
     debt_counterparty: str = ""           # bond dealer (differs from swap cpty)
     debt_frequency: str = ""              # coupon freq; blank -> fixed_frequency

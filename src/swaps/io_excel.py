@@ -127,6 +127,7 @@ def write_trade_debug_workbook(
     fixings: FixingHistory,
     grid_days: int | None = None,
     debt_leg: "FixedLeg | None" = None,
+    debt_curve: "ZeroCurve | None" = None,
 ) -> None:
     """Per-trade debug workbook: dump every intermediate frame as a separate tab.
 
@@ -177,9 +178,10 @@ def write_trade_debug_workbook(
         swap.fixed.cashflows(val_date, sofr).to_excel(w, sheet_name="FixedCF", index=False)
         _accrued_debug_frame(swap, val_date).to_excel(w, sheet_name="Accrued", index=False)
         # Hedged debt (LH trades): same cashflow/accrued format as the fixed leg.
-        # Debt is discounted on Fed Funds (not SOFR).
+        # Debt is discounted on Fed Funds + the debt credit spread (debt_curve).
         if debt_leg is not None:
-            debt_leg.cashflows(val_date, ff).to_excel(w, sheet_name="DebtCF", index=False)
+            disc = debt_curve if debt_curve is not None else ff
+            debt_leg.cashflows(val_date, disc).to_excel(w, sheet_name="DebtCF", index=False)
             pd.DataFrame([debt_leg.accrued_debug(val_date)]).to_excel(
                 w, sheet_name="DebtAccrued", index=False
             )

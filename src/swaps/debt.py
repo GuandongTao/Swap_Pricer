@@ -50,18 +50,29 @@ def debt_summary_filename(val_date: date) -> str:
     return f"Debt_Summary_{val_date.isoformat()}.csv"
 
 
-def value_debt(td: TradeDef, discount_curve: ZeroCurve, val_date: date) -> dict[str, float]:
+def debt_discount_curve(td: TradeDef, ff_curve: ZeroCurve) -> ZeroCurve:
+    """The curve used to discount the debt: Fed Funds shifted up by the debt's
+    credit/discounting spread (``debt_discount_spread``, decimal, may be
+    negative). Returns ``ff_curve`` unchanged when the spread is zero."""
+    s = td.debt_discount_spread
+    return ff_curve.bumped(s) if s else ff_curve
+
+
+def value_debt(td: TradeDef, ff_curve: ZeroCurve, val_date: date) -> dict[str, float]:
     """Compute the hedged bond's Clean / Accrued / Dirty as of ``val_date``,
     signed from the **obligor's** perspective (the party that owes the debt).
 
-    ``FixedLeg.pv`` / ``.accrued`` give the bond*holder's* (lender) positive PV;
-    we negate to the obligor's view, so Clean / Accrued / Dirty are liabilities
-    (negative). Dirty = -(PV of remaining coupons + principal); Accrued uses the
-    same inclusive-of-val_date convention as the IRS fixed leg; Clean = Dirty -
+    Discounted on Fed Funds plus the debt's credit spread
+    (``debt_discount_spread``); see :func:`debt_discount_curve`. ``FixedLeg.pv``
+    / ``.accrued`` give the bond*holder's* (lender) positive PV; we negate to the
+    obligor's view, so Clean / Accrued / Dirty are liabilities (negative). Dirty
+    = -(PV of remaining coupons + principal); Accrued uses the same
+    inclusive-of-val_date convention as the IRS fixed leg; Clean = Dirty -
     Accrued. Col AW is then ``Clean (negative) + USD Outstanding (positive)``.
     """
     leg = build_debt_leg(td)
-    dirty = -leg.pv(val_date, discount_curve)
+    disc = debt_discount_curve(td, ff_curve)
+    dirty = -leg.pv(val_date, disc)
     accrued = -leg.accrued(val_date)
     return {"clean": dirty - accrued, "accrued": accrued, "dirty": dirty}
 

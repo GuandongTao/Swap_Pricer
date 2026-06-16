@@ -75,6 +75,20 @@ def test_value_debt_reconciles_with_legacy_sheet():
     assert v["clean"] == pytest.approx(-512_134_804.0, rel=0.15)
 
 
+def test_debt_discount_spread_moves_pv():
+    ff = ExcelCurveLoader(DATA / "curves").load(date(2026, 3, 31), "FEDFUNDS")
+    vd = date(2026, 3, 31)
+    base = value_debt(_bond_trade(), ff, vd)                              # spread 0
+    wider = value_debt(_bond_trade(debt_discount_spread=0.01), ff, vd)    # +100bp
+    tighter = value_debt(_bond_trade(debt_discount_spread=-0.01), ff, vd)  # -100bp
+    # Clean is a negative liability. A higher discount rate (+spread) shrinks the
+    # PV magnitude -> clean less negative; a negative spread makes it more negative.
+    assert wider["clean"] > base["clean"]
+    assert tighter["clean"] < base["clean"]
+    # Accrued is discounting-independent -> unchanged by the spread.
+    assert wider["accrued"] == pytest.approx(base["accrued"])
+
+
 def test_build_debt_leg_requires_settlement_date():
     with pytest.raises(ValueError, match="debt_settlement_date"):
         build_debt_leg(_bond_trade(debt_settlement_date=None))

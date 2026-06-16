@@ -28,7 +28,7 @@ _DATE_FIELDS = {
 }
 _FLOAT_FIELDS = {
     "notional", "fixed_rate", "floating_spread",
-    "debt_fixed_rate", "debt_notional",
+    "debt_fixed_rate", "debt_notional", "debt_discount_spread",
 }
 _BOOL_FIELDS = {"pay_fixed", "intercompany"}
 _INT_FIELDS = {

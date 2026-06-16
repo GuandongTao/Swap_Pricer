@@ -14,7 +14,7 @@ import pandas as pd
 from .calendar_us import month_end_curve_date
 from .curve import ZeroCurve
 from .debt import (
-    debt_summary_filename, debt_summary_row,
+    debt_discount_curve, debt_summary_filename, debt_summary_row,
     resolve_hedged_debt_mtm, value_debt, write_debt_summary_csv,
 )
 from .io_excel import write_portfolio_workbook, write_trade_debug_workbook, write_trade_detail_workbook
@@ -340,9 +340,10 @@ class Portfolio:
                         if td_dbg is not None and (td_dbg.hedge or "").strip().upper() == "LH"
                         else None
                     )
+                    debt_curve = debt_discount_curve(td_dbg, ff) if debt_leg is not None else None
                     write_trade_debug_workbook(
                         p, swaps_by_id[v.trade_id], val_date, sofr, ff, fixings,
-                        debt_leg=debt_leg,
+                        debt_leg=debt_leg, debt_curve=debt_curve,
                     )
                     _log.info("  debug  [%d/%d] %s_debug.xlsx (%.2fs)", i, len(valuations), v.trade_id,
                               time.perf_counter() - t0)
