@@ -168,7 +168,7 @@ flowchart TD
     subgraph REF["📚 Reference Data Resolution"]
         R1["Entity RC lookup\n(Entity_Reference_Report.csv)\n→ CCID segments"]
         R2["Netting DB\n(Netting_Database.csv)\n→ netting rules, entity codes"]
-        R3["Hedged Debt (LH trades)\nvalue_debt() prices the inline debt_* bond\n(FixedLeg, principal-at-maturity, SOFR)\n→ AW = Clean + Outstanding\n→ writes Debt_Summary_DATE.csv\nSC → AW = −swap clean"]
+        R3["Hedged Debt (LH trades)\nvalue_debt() prices the inline debt_* bond\n(FixedLeg, principal-at-maturity, Fed Funds disc)\n→ AW = Clean + Outstanding (obligor-signed)\n→ writes Debt_Summary_DATE.csv\nSC → AW = −swap clean"]
     end
 
     subgraph WRITE["✍️ Output Writing"]

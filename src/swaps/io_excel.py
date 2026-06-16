@@ -177,8 +177,9 @@ def write_trade_debug_workbook(
         swap.fixed.cashflows(val_date, sofr).to_excel(w, sheet_name="FixedCF", index=False)
         _accrued_debug_frame(swap, val_date).to_excel(w, sheet_name="Accrued", index=False)
         # Hedged debt (LH trades): same cashflow/accrued format as the fixed leg.
+        # Debt is discounted on Fed Funds (not SOFR).
         if debt_leg is not None:
-            debt_leg.cashflows(val_date, sofr).to_excel(w, sheet_name="DebtCF", index=False)
+            debt_leg.cashflows(val_date, ff).to_excel(w, sheet_name="DebtCF", index=False)
             pd.DataFrame([debt_leg.accrued_debug(val_date)]).to_excel(
                 w, sheet_name="DebtAccrued", index=False
             )

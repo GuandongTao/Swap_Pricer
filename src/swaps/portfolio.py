@@ -197,7 +197,8 @@ class Portfolio:
                             debt_mtm_value: float | None = None
                             if (td.hedge or "").strip().upper() == "LH":
                                 dt0 = time.perf_counter()
-                                dv = value_debt(td, sofr, val_date)
+                                # Debt is discounted on Fed Funds (not SOFR).
+                                dv = value_debt(td, ff, val_date)
                                 debt_dt = time.perf_counter() - dt0
                                 debt_mtm_value = dv["clean"] + td.debt_notional
                                 debt_summary_rows.append(

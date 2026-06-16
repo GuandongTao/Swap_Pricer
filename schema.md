@@ -213,7 +213,7 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 ### Auxiliary modules
 
 - **`netting_db.py`** — `NettingRow(frozen dataclass)`: `netting_id, cash_flow_netting_allowed, position_netting_allowed, netting_entity, amex_legal_entity_name, external_name`. `load_netting_db(path) → dict[str, NettingRow]`. Parses the netting CSV (row 1 free-form title, row 2 headers, row 3+ data; FX rows silently skipped). Authoritative source for position-netting rules and entity info.
-- **`debt.py`** — `value_debt(td, sofr, val_date) → {clean, accrued, dirty}` (prices the hedged bond in-process via the FixedLeg model, principal-at-maturity, SOFR-discounted), `resolve_hedged_debt_mtm(trade_id, hedge, debt_deal_number, swap_clean, debt_mtm) → float` (LH/SC direction logic for column AW), and `write_debt_summary_csv(...)` (the `Debt_Summary_<val_date>.csv` artifact). The IRS→debt mapping is inline (`debt_deal_number` on each trade), so the legacy `Deal_Numbers.csv` map and external `Deal_Summary.xlsx` are gone.
+- **`debt.py`** — `value_debt(td, ff, val_date) → {clean, accrued, dirty}` (prices the hedged bond in-process via the FixedLeg model, principal-at-maturity, **Fed-Funds-discounted**, signed from the obligor's view so values are negative), `resolve_hedged_debt_mtm(trade_id, hedge, debt_deal_number, swap_clean, debt_mtm) → float` (LH/SC direction logic for column AW), and `write_debt_summary_csv(...)` (the `Debt_Summary_<val_date>.csv` artifact). The IRS→debt mapping is inline (`debt_deal_number` on each trade), so the legacy `Deal_Numbers.csv` map and external `Deal_Summary.xlsx` are gone.
 - **`manifest.py`** — `RunManifest` dataclass: `run_id` (UUID), `val_date`, `run_date` (UTC), `git_sha`, `status`, `timings`, `errors`, `warnings`, `per_trade_timings`. Helper: `file_sha256(path)`.
 
 ### Loaders (input abstraction)
@@ -353,7 +353,7 @@ CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reser
 
 **Footer sum columns:** G/H/I/J (Σ clean/accrued/dirty/dv01), Q/R (Σ notional twice), U/V/W (always 0), AK (Σ DA), AL (Σ DL), AW (Σ Hedged Debt MTM).
 
-**Hedged Debt MTM (AW):** `SC` → `−v.clean`. `LH` → the bond described by the trade's inline `debt_*` block is valued in-process (`value_debt`, SOFR-discounted FixedLeg) and AW = its `Clean + USD Outstanding` (= `debt_notional`); the computed Clean/Accrued/Dirty are also written to `Debt_Summary_<val_date>.csv`. `hedge` is required; a blank/unknown value or an LH whose debt can't be priced raises a hard per-trade error.
+**Hedged Debt MTM (AW):** `SC` → `−v.clean`. `LH` → the bond described by the trade's inline `debt_*` block is valued in-process (`value_debt`, **Fed-Funds-discounted** FixedLeg, obligor-signed/negative) and AW = its `Clean + USD Outstanding` (= `debt_notional`); the computed Clean/Accrued/Dirty are also written to `Debt_Summary_<val_date>.csv`. `hedge` is required; a blank/unknown value or an LH whose debt can't be priced raises a hard per-trade error.
 
 ### IRS Netting CSV (`IRS_Netting_<val_date>-00001.csv`)
 

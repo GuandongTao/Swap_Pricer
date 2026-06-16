@@ -3,8 +3,8 @@
 The debt a swap hedges is a fixed-rate bond. Its Clean / Accrued / Dirty are
 **computed every run** with the same :class:`~swaps.legs.fixed_leg.FixedLeg`
 model used for the IRS fixed leg (principal redeemed at maturity), discounted on
-the SOFR curve. The results are written to ``Debt_Summary_<val_date>.csv`` (a
-run artifact) and feed IRS col AW.
+the **Fed Funds** curve. The results are written to ``Debt_Summary_<val_date>.csv``
+(a run artifact) and feed IRS col AW.
 
 A trade's ``hedge`` direction decides AW:
 
