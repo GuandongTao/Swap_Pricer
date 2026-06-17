@@ -162,3 +162,66 @@ def build_swap(td: TradeDef, ff_curve: ZeroCurve, fixings: FixingHistory) -> Swa
             **td.meta,
         },
     )
+
+
+def build_debt_leg(td: TradeDef) -> FixedLeg:
+    """Build the FixedLeg modelling the bond this swap hedges (LH trades).
+
+    The debt is a plain fixed-rate bond: coupons at ``debt_fixed_rate -
+    floating_spread`` on ``debt_notional``, principal redeemed at maturity
+    (``principal_exchange="end"``), maturing on the swap's ``maturity_date``.
+    Conventions come from the ``debt_*`` block (bond default ``adjust="pay"``:
+    accrue on unadjusted coupon dates, roll only the payment date). The coupon
+    schedule is anchored at ``debt_settlement_date`` (the bond's issue date),
+    which generally predates the swap.
+
+    Discounting/accrual are then identical to the IRS fixed leg, so the caller
+    gets bond Dirty via ``FixedLeg.pv`` and bond Accrued via
+    ``FixedLeg.accrued`` (Clean = Dirty - Accrued).
+    """
+    if td.debt_settlement_date is None:
+        raise ValueError(
+            f"{td.trade_id}: hedge=LH requires debt_settlement_date (the bond's "
+            f"issue/dated date) to anchor the coupon schedule."
+        )
+    if td.debt_settlement_date >= td.maturity_date:
+        raise ValueError(
+            f"{td.trade_id}: debt_settlement_date {td.debt_settlement_date} must "
+            f"be before maturity_date {td.maturity_date}."
+        )
+
+    debt_bda = td.debt_bus_day_adj
+    calc_cal = _build_calendar(
+        td.debt_calculation_calendar,
+        td.debt_calculation_calendar_extras,
+        td.debt_calculation_calendar_extras_file,
+    )
+    pay_cal = _build_calendar(
+        td.debt_payment_calendar or td.debt_calculation_calendar,
+        td.debt_payment_calendar_extras,
+        td.debt_payment_calendar_extras_file,
+    )
+    freq = td.debt_frequency or td.fixed_frequency
+    schedule = generate_schedule(
+        effective_date=td.debt_settlement_date,
+        termination_date=td.maturity_date,
+        frequency=freq,
+        calendar=calc_cal,
+        eff_date_adj=td.debt_eff_date_adj or debt_bda,
+        bus_day_adj=debt_bda,
+        pay_date_adj=td.debt_pay_date_adj or debt_bda,
+        roll_convention=td.debt_roll_convention,
+        payment_delay_bdays=td.debt_payment_delay_bdays,
+        payment_calendar=pay_cal,
+        first_period_accrual_end_date=td.debt_first_period_accrual_end_date,
+    )
+    # Valuation coupon is the bond coupon net of the swap's floating spread.
+    coupon = td.debt_fixed_rate - td.floating_spread
+    return FixedLeg(
+        schedule,
+        ConstantNotional(td.debt_notional),
+        coupon,
+        get_daycount(td.debt_daycount),
+        principal_exchange=td.debt_principal_exchange,
+        adjust=td.debt_adjust,
+    )

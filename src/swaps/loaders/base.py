@@ -137,6 +137,52 @@ class TradeDef:
     # output-emit time, NOT carried per-trade.
     netting_id: str = ""
 
+    # --- Hedged-debt block (the debt this swap hedges) ---
+    # The debt is a fixed-rate bond, valued with the same FixedLeg model as the
+    # IRS fixed leg (principal redeemed at maturity). Its Clean/Accrued/Dirty are
+    # COMPUTED each run, written to Debt_Summary_<val_date>.csv, and feed IRS col
+    # AW (Hedged Debt MTM) for LH trades: AW = Clean + USD Outstanding (preserved
+    # from the legacy externally-produced summary; see swaps.debt).
+    #
+    # The block is only used when ``hedge == "LH"``; for "SC" the debt cells are
+    # ignored (AW = -swap_clean). ``debt_deal_number`` is the inline join key
+    # (this row's trade_id is the IRS deal number) -- it replaces the old
+    # data/debt/Deal_Numbers.csv map. Debt maturity == this trade's
+    # ``maturity_date`` (reused; no separate field). Valuation coupon =
+    # ``debt_fixed_rate - floating_spread``.
+    debt_deal_number: str = ""
+    debt_fixed_rate: float = 0.0          # bond coupon (decimal, e.g. 0.05625)
+    debt_notional: float = 0.0            # USD Outstanding (face)
+    # Credit/discounting spread (decimal, may be negative) added on top of the
+    # Fed Funds rate when discounting the debt: DF uses FF + this spread. 0 = pure
+    # Fed Funds. A positive spread lowers the debt's PV magnitude.
+    debt_discount_spread: float = 0.0
+    debt_settlement_date: date | None = None  # bond issue/dated date (accrual anchor)
+    debt_counterparty: str = ""           # bond dealer (differs from swap cpty)
+    debt_frequency: str = ""              # coupon freq; blank -> fixed_frequency
+    debt_daycount: str = "30/360"
+    # debt_* convention mirror of the fixed leg (bond market default: accrue on
+    # UNADJUSTED coupon dates, roll the payment date only -> debt_adjust="pay").
+    debt_bus_day_adj: str = "ModifiedFollowing"
+    debt_eff_date_adj: str = ""           # blank -> debt_bus_day_adj
+    debt_pay_date_adj: str = ""           # blank -> debt_bus_day_adj
+    debt_adjust: str = "pay"              # pay | acc_and_pay | none
+    debt_roll_convention: str = "forward_eom"
+    debt_principal_exchange: str = "end"  # bond redeems principal at maturity
+    debt_payment_delay_bdays: int = 0
+    debt_calculation_calendar: str = "NY_FED"
+    debt_payment_calendar: str = ""       # blank -> debt_calculation_calendar
+    debt_calculation_calendar_extras: list[date] = field(default_factory=list)
+    debt_payment_calendar_extras: list[date] = field(default_factory=list)
+    debt_calculation_calendar_extras_file: str | None = None
+    debt_payment_calendar_extras_file: str | None = None
+    debt_first_period_accrual_end_date: date | None = None
+    # Descriptive reference fields (output-only; not derivable from IRS terms).
+    debt_gaap_category: str = ""
+    debt_instrument: str = ""
+    debt_rate_type: str = "FIXED"
+    debt_cusip: str = ""
+
     meta: dict = field(default_factory=dict)
 
 

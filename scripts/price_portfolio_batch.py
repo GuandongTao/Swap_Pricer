@@ -10,7 +10,7 @@ Usage:
     # inclusive calendar-day range
     python scripts/price_portfolio_batch.py --start 2026-03-25 --end 2026-03-31
     # tune parallelism
-    python scripts/price_portfolio_batch.py --start 2026-03-25 --end 2026-03-31 --max-workers 4 --debug
+    python scripts/price_portfolio_batch.py --start 2026-03-25 --end 2026-03-31 --max-workers 4 --debug-full
 """
 
 from __future__ import annotations
@@ -55,9 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--max-workers", type=int, default=None, help="Parallel worker processes (default: auto)")
     p.add_argument(
-        "--debug", action="store_true",
-        help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
-             "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
+        "--debug-loan", action="store_true",
+        help="Also write the hedged-debt summary (Debt_Summary_<val_date>.csv) per date.",
+    )
+    p.add_argument(
+        "--debug-full", action="store_true",
+        help="Write EVERYTHING: prod CSV + Debt_Summary + portfolio workbook + "
+             "per-trade detail + per-trade debug + parquet. Superset of --debug-loan. "
+             "Default (no flag) writes only the prod CSV + manifest (+ netting).",
     )
     curve_src = p.add_mutually_exclusive_group()
     curve_src.add_argument(
@@ -114,9 +119,10 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=args.data_dir,
         out_dir=args.out_dir,
         max_workers=args.max_workers,
-        write_detail=args.debug,
-        write_parquet=args.debug,
-        write_debug=args.debug,
+        write_detail=args.debug_full,
+        write_parquet=args.debug_full,
+        write_debug=args.debug_full,
+        write_debt_summary=args.debug_loan or args.debug_full,
         pillar_dates=args.pillar_dates,
         pillar_dates_df=args.pillar_dates_df,
         verbose=args.verbose,

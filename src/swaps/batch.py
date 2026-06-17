@@ -48,6 +48,7 @@ def _run_one(
     write_detail: bool,
     write_parquet: bool,
     write_debug: bool,
+    write_debt_summary: bool = False,
     pillar_dates: bool = False,
     pillar_dates_df: bool = False,
     verbose: bool = False,
@@ -113,9 +114,10 @@ def _run_one(
             write_detail=write_detail,
             write_parquet=write_parquet,
             write_debug=write_debug,
+            write_debt_summary=write_debt_summary,
             entity_rc=entity_rc,
             netting_db=netting_db,
-            debt_dir=dd / "debt",
+            folder_suffix=" BBG" if pillar_dates_df else "",
         )
         _wlog.info("===== val_date %s : run DONE (status=%s) =====",
                    val_date, manifest.status)
@@ -164,6 +166,7 @@ def run_batch(
     write_detail: bool = False,
     write_parquet: bool = False,
     write_debug: bool = False,
+    write_debt_summary: bool = False,
     pillar_dates: bool = False,
     pillar_dates_df: bool = False,
     verbose: bool = False,
@@ -191,7 +194,7 @@ def run_batch(
         futs = {
             ex.submit(
                 _run_one, d, data_dir, out_dir, fixing_file,
-                write_detail, write_parquet, write_debug,
+                write_detail, write_parquet, write_debug, write_debt_summary,
                 pillar_dates, pillar_dates_df, verbose,
                 entity_rc_path_str, netting_db_path_str,
             ): d

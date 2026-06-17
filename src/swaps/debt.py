@@ -1,44 +1,42 @@
-"""Hedged-debt lookups for the IRS Valuation feed (col AW, Hedged Debt MTM).
+"""Hedged-debt valuation for the IRS Valuation feed (col AW, Hedged Debt MTM).
 
-A trade's ``hedge`` direction decides where AW comes from:
+The debt a swap hedges is a fixed-rate bond. Its Clean / Accrued / Dirty are
+**computed every run** with the same :class:`~swaps.legs.fixed_leg.FixedLeg`
+model used for the IRS fixed leg (principal redeemed at maturity), discounted on
+the **Fed Funds** curve. The results are written to ``Debt_Summary_<val_date>.csv``
+(a run artifact) and feed IRS col AW.
 
-* ``Long``  -> the MTM of the debt the swap hedges, taken as
-  ``Clean + USD Outstanding``. The chain is::
+A trade's ``hedge`` direction decides AW:
 
-      IRS quantum_deal_number
-          -> Debt Deal Number          (data/debt/Deal_Numbers.csv, static map)
-          -> Clean + USD Outstanding   (data/debt/Deal_Summary_<val_date>.xlsx)
+* ``LH`` -> the hedged debt's ``Clean + USD Outstanding`` (face), looked up by
+  the trade's inline ``debt_deal_number``. Original sign is preserved. The
+  ``Clean + Outstanding`` definition is preserved from the legacy
+  externally-produced summary; we now compute the inputs ourselves.
+* ``SC`` -> the swap's own clean value with its sign reversed (``-swap_clean``);
+  no debt valuation needed.
 
-* ``Short`` -> the swap's own clean value (``v.clean``); no debt files needed.
-
-Original signs are preserved for Long; Short reverses the swap clean's sign.
-
-Files (under ``data/debt/`` by default):
-
-* ``Deal_Numbers.csv`` -- header ``Debt Deal Number,IRS Deal Number``.
-* ``Deal_Summary_<val_date>.xlsx`` -- Sheet1 with a free-form title in row 1,
-  column headers in row 2, data from row 3. We read ``Debt Deal Number``,
-  ``Clean`` and ``USD Outstanding`` by header name (the file carries many
-  other columns).
+The IRS->debt mapping is carried inline (this row's ``trade_id`` is the IRS deal
+number; ``debt_deal_number`` is the debt key), so the old
+``data/debt/Deal_Numbers.csv`` map is no longer used.
 """
 
 from __future__ import annotations
 
-import csv
 from datetime import date
 from pathlib import Path
 
-import openpyxl
-
-DEAL_NUMBERS_FILE = "Deal_Numbers.csv"
+from .curve import ZeroCurve
+from .io_prod import write_csv_no_trailing_newline
+from .loaders.base import TradeDef
+from .trade_builder import build_debt_leg
 
 
 def _norm_deal(x: object) -> str:
     """Normalize a deal number to a bare string key.
 
-    Deal numbers arrive as ints (xlsx), strings (CSV/trade rows), or pandas
-    floats (``19085763.0``). Strip whitespace and a spurious trailing ``.0`` so
-    every source keys identically."""
+    Deal numbers arrive as ints, strings, or pandas floats (``19085763.0``).
+    Strip whitespace and a spurious trailing ``.0`` so every source keys
+    identically."""
     if x is None:
         return ""
     s = str(x).strip()
@@ -48,135 +46,148 @@ def _norm_deal(x: object) -> str:
 
 
 def debt_summary_filename(val_date: date) -> str:
-    """Spec filename: ``Deal_Summary_<YYYY-MM-DD>.xlsx``."""
-    return f"Deal_Summary_{val_date.isoformat()}.xlsx"
+    """Run-artifact filename: ``Debt_Summary_<YYYY-MM-DD>.csv``."""
+    return f"Debt_Summary_{val_date.isoformat()}.csv"
 
 
-def load_deal_number_map(path: str | Path) -> dict[str, str]:
-    """``IRS Deal Number -> Debt Deal Number`` from ``Deal_Numbers.csv``.
+def debt_discount_curve(td: TradeDef, ff_curve: ZeroCurve) -> ZeroCurve:
+    """The curve used to discount the debt: Fed Funds shifted up by the debt's
+    credit/discounting spread (``debt_discount_spread``, decimal, may be
+    negative). Returns ``ff_curve`` unchanged when the spread is zero."""
+    s = td.debt_discount_spread
+    return ff_curve.bumped(s) if s else ff_curve
 
-    Raises:
-        FileNotFoundError: file missing.
-        ValueError:        required header columns absent.
+
+def value_debt(td: TradeDef, ff_curve: ZeroCurve, val_date: date) -> dict[str, float]:
+    """Compute the hedged bond's Clean / Accrued / Dirty as of ``val_date``,
+    signed from the **obligor's** perspective (the party that owes the debt).
+
+    Discounted on Fed Funds plus the debt's credit spread
+    (``debt_discount_spread``); see :func:`debt_discount_curve`. ``FixedLeg.pv``
+    / ``.accrued`` give the bond*holder's* (lender) positive PV; we negate to the
+    obligor's view, so Clean / Accrued / Dirty are liabilities (negative). Dirty
+    = -(PV of remaining coupons + principal); Accrued uses the same
+    inclusive-of-val_date convention as the IRS fixed leg; Clean = Dirty -
+    Accrued. Col AW is then ``Clean (negative) + USD Outstanding (positive)``.
     """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Deal-number map not found: {p}")
-    with p.open("r", encoding="utf-8-sig", newline="") as fh:
-        rows = list(csv.reader(fh))
-    if not rows:
-        return {}
-    header = [c.strip() for c in rows[0]]
-    try:
-        debt_i = header.index("Debt Deal Number")
-        irs_i = header.index("IRS Deal Number")
-    except ValueError:
-        raise ValueError(
-            f"{p}: header must contain 'Debt Deal Number' and 'IRS Deal "
-            f"Number'; got {header}"
-        )
-    out: dict[str, str] = {}
-    for r in rows[1:]:
-        if not any((c or "").strip() for c in r):
-            continue
-        irs = _norm_deal(r[irs_i]) if irs_i < len(r) else ""
-        debt = _norm_deal(r[debt_i]) if debt_i < len(r) else ""
-        if irs:
-            out[irs] = debt
-    return out
-
-
-def load_debt_mtm(path: str | Path) -> dict[str, float]:
-    """``Debt Deal Number -> Clean + USD Outstanding`` from a ``Deal_Summary``.
-
-    The Long-hedge MTM (col AW) is the debt's ``Clean`` plus its ``USD
-    Outstanding`` notional, so this loader reads both columns and returns
-    their sum per deal.
-
-    Layout: row 1 free-form title, row 2 column headers, row 3+ data.
-
-    Raises:
-        FileNotFoundError: file missing.
-        ValueError:        required header columns absent.
-    """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Debt summary not found: {p}")
-    wb = openpyxl.load_workbook(p, data_only=True, read_only=True)
-    try:
-        ws = wb[wb.sheetnames[0]]
-        rows = list(ws.iter_rows(values_only=True))
-    finally:
-        wb.close()
-    if len(rows) < 2:
-        return {}
-    header = [str(c).strip() if c is not None else "" for c in rows[1]]
-    try:
-        debt_i = header.index("Debt Deal Number")
-        clean_i = header.index("Clean")
-        out_i = header.index("USD Outstanding")
-    except ValueError:
-        raise ValueError(
-            f"{p}: header row 2 must contain 'Debt Deal Number', 'Clean' and "
-            f"'USD Outstanding'; got {header}"
-        )
-    out: dict[str, float] = {}
-    for r in rows[2:]:
-        if r is None or max(debt_i, clean_i, out_i) >= len(r):
-            continue
-        deal = _norm_deal(r[debt_i])
-        if not deal or r[clean_i] is None or r[out_i] is None:
-            continue
-        try:
-            out[deal] = float(r[clean_i]) + float(r[out_i])
-        except (TypeError, ValueError):
-            continue
-    return out
+    leg = build_debt_leg(td)
+    disc = debt_discount_curve(td, ff_curve)
+    dirty = -leg.pv(val_date, disc)
+    accrued = -leg.accrued(val_date)
+    return {"clean": dirty - accrued, "accrued": accrued, "dirty": dirty}
 
 
 def resolve_hedged_debt_mtm(
     trade_id: str,
     hedge: str,
-    quantum_deal_number: str,
+    debt_deal_number: str,
     swap_clean: float,
-    deal_map: dict[str, str],
-    debt_mtm: dict[str, float],
+    debt_mtm_value: float | None = None,
 ) -> float:
     """Compute the Hedged Debt MTM (col AW) for one trade.
 
-    ``Short`` -> ``-swap_clean`` (the swap's clean value with its sign
-    **reversed**). ``Long`` -> the hedged debt's ``Clean + USD Outstanding``,
-    resolved ``quantum_deal_number -> Debt Deal Number -> Clean + USD
-    Outstanding`` (sign preserved).
+    ``SC`` -> ``-swap_clean`` (the swap's clean value, sign **reversed**).
+    ``LH`` -> ``debt_mtm_value``, the hedged debt's pre-computed ``Clean + USD
+    Outstanding`` (sign preserved); the caller values the bond (``value_debt``)
+    and passes the result in.
 
     Raises ``ValueError`` (a hard, per-trade error) when ``hedge`` is blank /
-    unrecognized, or a ``Long`` trade cannot be resolved to a debt Clean. The
-    Portfolio runner catches it, records the trade in ``manifest.errors[]``, and
-    the run ends ``status="partial"``.
+    unrecognized, an ``LH`` trade has no ``debt_deal_number``, or its debt could
+    not be valued (``debt_mtm_value is None``). The Portfolio runner catches it,
+    records the trade in ``manifest.errors[]``, and ends ``status="partial"``.
     """
-    h = (hedge or "").strip().lower()
-    if h == "short":
+    h = (hedge or "").strip().upper()
+    if h == "SC":
         return -swap_clean
-    if h == "long":
-        irs_deal = _norm_deal(quantum_deal_number)
-        if not irs_deal:
+    if h == "LH":
+        if not _norm_deal(debt_deal_number):
             raise ValueError(
-                f"{trade_id}: hedge=Long requires a quantum_deal_number to "
-                f"look up the hedged debt's MTM."
+                f"{trade_id}: hedge=LH requires a debt_deal_number to identify "
+                f"the hedged debt."
             )
-        debt_deal = deal_map.get(irs_deal, "")
-        if not debt_deal:
+        if debt_mtm_value is None:
             raise ValueError(
-                f"{trade_id}: IRS deal number {irs_deal!r} is not mapped to a "
-                f"debt deal number in {DEAL_NUMBERS_FILE}."
+                f"{trade_id}: hedge=LH but the debt could not be valued (the "
+                f"debt_* block must be present and priceable)."
             )
-        if debt_deal not in debt_mtm:
-            raise ValueError(
-                f"{trade_id}: debt deal number {debt_deal!r} (mapped from IRS "
-                f"deal {irs_deal!r}) not found in the Debt Summary."
-            )
-        return debt_mtm[debt_deal]
+        return debt_mtm_value
     raise ValueError(
-        f"{trade_id}: 'hedge' must be 'Long' or 'Short' (got {hedge!r}); it is "
+        f"{trade_id}: 'hedge' must be 'LH' or 'SC' (got {hedge!r}); it is "
         f"required on every trade row for the IRS Valuation feed."
     )
+
+
+# --- Debt_Summary CSV artifact ----------------------------------------------
+# Column order mirrors the legacy externally-produced Deal_Summary so a human
+# can diff the two. Accrued/Clean/Dirty are now computed; the rest are sourced
+# from the trade's debt_* block (or derived).
+DEBT_SUMMARY_FIELDS: list[str] = [
+    "Entity", "Oracle Entity", "Debt Deal Number", "Currency Of Issuance",
+    "GAAP Category", "Instrument", "Rate Type", "Settlement Date",
+    "Debt Maturity Date", "Fixed Coupon", "Local Currency Outstanding",
+    "USD Outstanding", "Counterparty", "CUSIP ISN", "Coupon Frequency",
+    "Coupon Days Convention", "Accrued Interest", "Clean", "Dirty",
+]
+
+# Tenor code -> the words the legacy summary used for "Coupon Frequency".
+_FREQ_WORDS = {"1Y": "ANNUAL", "6M": "SEMI ANNUAL", "3M": "QUARTERLY", "1M": "MONTHLY"}
+
+
+def _fmt(v: object) -> str:
+    """Render a Debt_Summary cell. ``None`` -> blank; dates -> mm/dd/yyyy;
+    floats via ``repr`` (shortest round-tripping decimal, no silent rounding)."""
+    if v is None:
+        return ""
+    if isinstance(v, date):
+        return v.strftime("%m/%d/%Y")
+    if isinstance(v, float):
+        return "" if v != v else repr(v)
+    return str(v)
+
+
+def debt_summary_row(td: TradeDef, clean: float, accrued: float, dirty: float) -> dict[str, object]:
+    """Build one Debt_Summary record from a trade's debt block + computed values."""
+    freq = td.debt_frequency or td.fixed_frequency
+    # Show the NET valuation coupon (debt_fixed_rate - floating_spread), in
+    # percent, rounded to 6dp to drop binary-float display noise (5.23 not
+    # 5.229999...). This matches the coupon actually used to value the bond.
+    net_coupon_pct = round((td.debt_fixed_rate - td.floating_spread) * 100.0, 6)
+    return {
+        "Entity": f"AXP {td.oracle_entity_code}".strip(),
+        "Oracle Entity": td.oracle_entity_code,
+        "Debt Deal Number": _norm_deal(td.debt_deal_number),
+        "Currency Of Issuance": td.notional_currency,
+        "GAAP Category": td.debt_gaap_category,
+        "Instrument": td.debt_instrument,
+        "Rate Type": td.debt_rate_type,
+        "Settlement Date": td.debt_settlement_date,
+        "Debt Maturity Date": td.maturity_date,
+        "Fixed Coupon": net_coupon_pct,   # net coupon in percent (5.625)
+        "Local Currency Outstanding": td.debt_notional,
+        "USD Outstanding": td.debt_notional,
+        "Counterparty": td.debt_counterparty,
+        "CUSIP ISN": td.debt_cusip,
+        "Coupon Frequency": _FREQ_WORDS.get(freq.upper(), freq),
+        "Coupon Days Convention": td.debt_daycount,
+        "Accrued Interest": accrued,
+        "Clean": clean,
+        "Dirty": dirty,
+    }
+
+
+def write_debt_summary_csv(out_path: str | Path, rows: list[dict[str, object]]) -> Path:
+    """Write the Debt_Summary artifact: row 1 title, row 2 headers, row 3+ data.
+
+    Mirrors the legacy layout (free-form title, then the header row) so it reads
+    the same as the file it replaces. UTF-8, no trailing newline.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    all_rows: list[list[str]] = [
+        ["Hedged Debt details"],
+        list(DEBT_SUMMARY_FIELDS),
+        *[[_fmt(r.get(f)) for f in DEBT_SUMMARY_FIELDS] for r in rows],
+    ]
+    # Reuse the prod feed's writer (UTF-8, no trailing newline, Windows-safe).
+    write_csv_no_trailing_newline(out_path, all_rows)
+    return out_path
