@@ -209,11 +209,14 @@ VAL_ROWS = [
     # ── section ──
     ("SECTION", "HEDGED DEBT MTM", None, None, None),
     ("AW", "Hedged Debt MTM",        "Numeric",
-     "Short hedge: −v.clean (negative of swap's clean value).  "
-     "Long hedge: resolved via quantum_deal_number → Deal_Numbers.csv → "
-     "Deal_Summary_<date>.xlsx → Clean + USD Outstanding.",
-     "Required field. Blank / unresolvable Long hedge is a hard per-trade error. "
-     "Summed in footer row."),
+     "Short hedge (SC): −v.clean (negative of swap's clean value).  "
+     "Long hedge (LH): the hedged bond is valued in-process from the trade's inline "
+     "debt_* fields (FixedLeg model, principal-at-maturity, discounted on Fed Funds + "
+     "debt_discount_spread, signed from the obligor's view), then AW = debt Clean + "
+     "USD Outstanding (debt_notional).",
+     "Required field. An LH trade whose inline debt cannot be priced is a hard "
+     "per-trade error. Legacy external Deal_Numbers.csv / Deal_Summary_<date>.xlsx "
+     "feed is no longer used. Summed in footer row."),
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
