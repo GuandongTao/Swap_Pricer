@@ -37,6 +37,7 @@ class RunManifest:
     run_date: datetime
     git_sha: str
     trade_count: int = 0
+    version: str = "00001"
     status: str = "started"
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     finished_at: datetime | None = None

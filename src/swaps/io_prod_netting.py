@@ -119,9 +119,9 @@ class _Group:
         return sum(-v.dirty for v in self.valuations if v.dirty < 0)
 
 
-def netting_filename(val_date: date) -> str:
-    """Spec filename: ``IRS_Netting_<YYYY-MM-DD>-00001.csv``."""
-    return f"IRS_Netting_{val_date.isoformat()}-{VERSION_STAMP}.csv"
+def netting_filename(val_date: date, version: str = VERSION_STAMP) -> str:
+    """Spec filename: ``IRS_Netting_<YYYY-MM-DD>-<version>.csv``."""
+    return f"IRS_Netting_{val_date.isoformat()}-{version}.csv"
 
 
 def _group_by_netting_id(
@@ -253,6 +253,7 @@ def write_netting_csv(
     val_date: date,
     netting_db: dict[str, NettingRow],
     entity_rc: dict[str, str],
+    version: str = VERSION_STAMP,
 ) -> Path:
     """Write the IRS Netting feed CSV.
 
@@ -266,8 +267,8 @@ def write_netting_csv(
     header_row = [
         "H",
         val_date.strftime("%Y%m%d"),
-        netting_filename(val_date),
-        VERSION_STAMP,
+        netting_filename(val_date, version),
+        version,
         SOURCE_NAME,
     ]
     groups = _group_by_netting_id(trades_by_id, valuations)

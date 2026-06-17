@@ -32,6 +32,39 @@ _log = logging.getLogger(__name__)
 
 TRADE_ID_PREFIX = "AMEX_DAILY_IRS"
 
+VERSION_WIDTH = 5
+
+
+def _fmt_version(n: int) -> str:
+    """Zero-pad a submission sequence number to the spec's 5-digit width."""
+    return f"{n:0{VERSION_WIDTH}d}"
+
+
+def _next_version(base_out: Path, val_date: date, folder_suffix: str) -> str:
+    """Auto-detect the next submission version for this ``(val_date, source)``.
+
+    Scans ``base_out`` for prior run folders of the *same* valuation date and the
+    *same* data source (the ``folder_suffix``, e.g. ``" BBG"``), parses their
+    trailing ``_ver_<NNNNN>`` segment, and returns ``max + 1`` (or ``00001`` if
+    none exist). The ``_ver_`` anchor sits immediately after the run-date (and
+    after the source suffix), so a non-BBG scan never matches a ``" BBG"`` folder
+    and vice-versa -- the two lineages version independently.
+    """
+    pat = re.compile(
+        rf"^valdate_{re.escape(val_date.isoformat())}"
+        rf"_rundate_\d{{4}}-\d{{2}}-\d{{2}}{re.escape(folder_suffix)}"
+        rf"_ver_(\d+)$"
+    )
+    highest = 0
+    if base_out.exists():
+        for child in base_out.iterdir():
+            if not child.is_dir():
+                continue
+            m = pat.match(child.name)
+            if m:
+                highest = max(highest, int(m.group(1)))
+    return _fmt_version(highest + 1)
+
 
 def _qualify_amex_id(raw: str, val_date: date) -> tuple[str, str]:
     """Reconstruct the full trade id from the trailing unique id number.
@@ -83,6 +116,7 @@ class Portfolio:
         entity_rc: dict[str, str] | None = None,
         netting_db: dict[str, NettingRow] | None = None,
         folder_suffix: str = "",
+        version: str | int | None = None,
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -94,10 +128,21 @@ class Portfolio:
         base_out = Path(out_dir)
         # folder_suffix marks the data source in the folder name (e.g. " BBG"
         # when curves came from --pillar-dates-df / Bloomberg DF files).
+        #
+        # Submission version: an explicit override (--version) wins; otherwise
+        # auto-increment past any prior run for this same (val_date, source).
+        # The same 5-digit stamp drives the folder name AND the feed filename /
+        # header so the file's version always follows its directory.
+        if version is None:
+            version_stamp = _next_version(base_out, val_date, folder_suffix)
+        else:
+            version_stamp = _fmt_version(int(version))
+        manifest.version = version_stamp
         run_folder = (
             f"valdate_{val_date.isoformat()}"
             f"_rundate_{manifest.run_date:%Y-%m-%d}"
             f"{folder_suffix}"
+            f"_ver_{version_stamp}"
         )
         out_dir = base_out / run_folder
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -259,12 +304,13 @@ class Portfolio:
         trades_by_id = {td.trade_id: td for td in trades}
 
         if write_prod:
-            prod_path = out_dir / prod_filename(val_date)
+            prod_path = out_dir / prod_filename(val_date, version_stamp)
             _log.info("Writing prod CSV -> %s", prod_path)
             with _timed(timings, "write_prod_csv"):
                 write_prod_csv(
                     prod_path, trades_by_id, valuations, val_date,
                     entity_rc=entity_rc, netting_db=netting_db,
+                    version=version_stamp,
                 )
             manifest.outputs["prod_csv"] = str(prod_path)
             # Debt_Summary artifact: the computed Clean/Accrued/Dirty for every
@@ -284,12 +330,13 @@ class Portfolio:
             # failing the whole run -- the valuation feed is the primary
             # deliverable.
             if netting_db is not None and entity_rc:
-                netting_path = out_dir / netting_filename(val_date)
+                netting_path = out_dir / netting_filename(val_date, version_stamp)
                 _log.info("Writing netting CSV -> %s", netting_path)
                 with _timed(timings, "write_netting_csv"):
                     write_netting_csv(
                         netting_path, trades_by_id, valuations, val_date,
                         netting_db=netting_db, entity_rc=entity_rc,
+                        version=version_stamp,
                     )
                 manifest.outputs["netting_csv"] = str(netting_path)
             else:

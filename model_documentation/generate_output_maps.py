@@ -355,7 +355,7 @@ val_wb = build_wb(
     col_headers=VAL_COLS,
     rows=VAL_ROWS,
     col_widths=[8, 28, 12, 60, 55],
-    title_text="IRS Valuation Output Field Map  —  IRS_Valuation_<val_date>-00001.csv  (49 columns, A–AW)",
+    title_text="IRS Valuation Output Field Map  —  IRS_Valuation_<val_date>-<NNNNN>.csv  (49 columns, A–AW)",
 )
 val_path = os.path.join(OUT_DIR, "IRS_Valuation_Output_Map.xlsx")
 val_wb.save(val_path)
@@ -366,7 +366,7 @@ net_wb = build_wb(
     col_headers=NET_COLS,
     rows=NET_ROWS,
     col_widths=[8, 32, 12, 60, 55],
-    title_text="IRS Netting Output Field Map  —  IRS_Netting_<val_date>-00001.csv  (21 columns, A–U)",
+    title_text="IRS Netting Output Field Map  —  IRS_Netting_<val_date>-<NNNNN>.csv  (21 columns, A–U)",
 )
 net_path = os.path.join(OUT_DIR, "IRS_Netting_Output_Map.xlsx")
 net_wb.save(net_path)

@@ -238,7 +238,7 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 
 ### Portfolio & output
 
-- **`Portfolio`** — takes loaders + pricer; `run(val_date, out_dir, ...)` orchestrates load → build → price → write. One run is self-contained under `output/valdate_<val_date>_rundate_<run_date>/`. Skips matured trades (`maturity_date < val_date`). Catches per-trade errors into `manifest.errors[]`.
+- **`Portfolio`** — takes loaders + pricer; `run(val_date, out_dir, ...)` orchestrates load → build → price → write. One run is self-contained under `output/valdate_<val_date>_rundate_<run_date>[ BBG]_ver_<NNNNN>/` (see Output Layout for the version stamp). Skips matured trades (`maturity_date < val_date`). Catches per-trade errors into `manifest.errors[]`.
 - **`io_excel`** — portfolio workbook + per-trade detail + debug workbooks.
 - **`io_parquet`** — same frames dumped to Parquet.
 - **`io_prod`** — KPMG IRS Valuation feed CSV (49 columns).
@@ -254,19 +254,27 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 ## Output Layout
 
 Every run (single-date *or* one date within a batch) is self-contained under
-`output/valdate_<val_date>_rundate_<run_date>/`. **By default (no flag) the
-run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-00001.csv`) + manifest
-(+ netting when available).** `--debug-loan` additionally writes the hedged-debt
-summary; `--debug-full` flips every artifact on (Debt_Summary + portfolio
-workbook + per-trade detail + per-trade debug + parquet; superset of
+`output/valdate_<val_date>_rundate_<run_date>[ BBG]_ver_<NNNNN>/`. **By default
+(no flag) the run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-<NNNNN>.csv`)
++ manifest (+ netting when available).** `--debug-loan` additionally writes the
+hedged-debt summary; `--debug-full` flips every artifact on (Debt_Summary +
+portfolio workbook + per-trade detail + per-trade debug + parquet; superset of
 `--debug-loan`). A batch additionally drops `batch_<UTCstamp>.log` and
-`batch_<UTCstamp>.json` at the `output/` root. Full layout under `--debug-full`:
+`batch_<UTCstamp>.json` at the `output/` root.
+
+**Submission version (`<NNNNN>`)**: a 5-digit sequence per `(val_date, data
+source)`. The portfolio runner auto-increments it past any prior run for the
+same as-of date and same source (the ` BBG` suffix versions independently);
+`--version N` overrides it explicitly. The SAME stamp drives the run folder
+name, the feed filename, and header-row cell 4, and is recorded on the manifest
+(`manifest.version`). Pre-versioning folders (no `_ver_` suffix) are not counted,
+so detection starts at `00001`. Full layout under `--debug-full`:
 
 ```
 output/
-├── valdate_<val_date>_rundate_<run_date>/
-│   ├── IRS_Valuation_<val_date>-00001.csv   (ALWAYS — default)
-│   ├── IRS_Netting_<val_date>-00001.csv     (when netting_db + entity_rc present)
+├── valdate_<val_date>_rundate_<run_date>[ BBG]_ver_<NNNNN>/
+│   ├── IRS_Valuation_<val_date>-<NNNNN>.csv   (ALWAYS — default)
+│   ├── IRS_Netting_<val_date>-<NNNNN>.csv     (when netting_db + entity_rc present)
 │   ├── Debt_Summary_<val_date>.csv          (--debug-loan / --debug-full)
 │   ├── portfolio_<val_date>.xlsx            (only with --debug-full)
 │   ├── detail/<trade_id>.xlsx              (only with --debug-full)
@@ -277,17 +285,17 @@ output/
 └── batch_<UTCstamp>.json                   (batch runs only)
 ```
 
-### Production CSV (`IRS_Valuation_<val_date>-00001.csv`)
+### Production CSV (`IRS_Valuation_<val_date>-<NNNNN>.csv`)
 
 Matches the KPMG IRS-valuation feed spec (`Output_Format.xlsx`). Written by `src/swaps/io_prod.py::write_prod_csv`.
 
-**Encoding**: UTF-8 (no BOM). **Version stamp**: hard-coded `"00001"`.
+**Encoding**: UTF-8 (no BOM). **Version stamp** `<NNNNN>`: 5-digit submission sequence per `(val_date, data source)`, auto-incremented (or set via `--version`); see Output Layout above. `io_prod.VERSION_STAMP = "00001"` is only the fallback default when a caller supplies none.
 
 **Row structure** (49 columns wide, A..AW):
 
 | Row | Cells | Contents |
 |---|---|---|
-| 1 (header) | 5 | `H` \| `<yyyymmdd run date>` \| `IRS_Valuation_<val_date>-00001.csv` \| `00001` \| `KPMG` |
+| 1 (header) | 5 | `H` \| `<yyyymmdd run date>` \| `IRS_Valuation_<val_date>-<NNNNN>.csv` \| `<NNNNN>` \| `KPMG` |
 | 2 (field names) | 49 | column labels in exact spec order |
 | 3..N+2 (trades) | 49 | one row per priced valuation |
 | N+3 (footer) | 49 | `T` \| `<n_trades>` \| blanks \| column-letter sums |
@@ -357,15 +365,15 @@ CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reser
 
 **Hedged Debt MTM (AW):** `SC` → `−v.clean`. `LH` → the bond described by the trade's inline `debt_*` block is valued in-process (`value_debt`, **Fed-Funds-discounted** FixedLeg, obligor-signed/negative) and AW = its `Clean + USD Outstanding` (= `debt_notional`); under `--debug-loan`/`--debug-full` the computed Clean/Accrued/Dirty are also written to `Debt_Summary_<val_date>.csv` (suppressed by default). `hedge` is required; a blank/unknown value or an LH whose debt can't be priced raises a hard per-trade error.
 
-### IRS Netting CSV (`IRS_Netting_<val_date>-00001.csv`)
+### IRS Netting CSV (`IRS_Netting_<val_date>-<NNNNN>.csv`)
 
-Written by `src/swaps/io_prod_netting.py` when both `netting_db` and `entity_rc` are present. Matches the KPMG IRS Netting feed spec (`Output_Format Netting.xlsx`).
+Written by `src/swaps/io_prod_netting.py` when both `netting_db` and `entity_rc` are present. Matches the KPMG IRS Netting feed spec (`Output_Format Netting.xlsx`). Carries the same `<NNNNN>` submission version as the valuation feed for the run.
 
 **Row structure** (21 columns wide, A..U):
 
 | Row | Contents |
 |---|---|
-| 1 (header) | `H` \| `<yyyymmdd>` \| `IRS_Netting_<val_date>-00001.csv` \| `00001` \| `KPMG` |
+| 1 (header) | `H` \| `<yyyymmdd>` \| `IRS_Netting_<val_date>-<NNNNN>.csv` \| `<NNNNN>` \| `KPMG` |
 | 2 (field names) | 21 column labels |
 | 3..N+2 | one row per netting_id |
 | N+3 (footer) | `T` \| `<n_netting_rows>` \| sums at K/L/M/N/O |
@@ -529,9 +537,9 @@ Swap Pricer/
 │   ├── entity/Entity_Reference_Report.csv
 │   └── entity/Netting_Database.csv
 ├── output/
-│   ├── valdate_<val_date>_rundate_<run_date>/   (+ " BBG" suffix when --pillar-dates-df)
-│   │   ├── IRS_Valuation_<val_date>-00001.csv  (DEFAULT — always written)
-│   │   ├── IRS_Netting_<val_date>-00001.csv    (when netting_db + entity_rc present)
+│   ├── valdate_<val_date>_rundate_<run_date>[ BBG]_ver_<NNNNN>/   (" BBG" when --pillar-dates-df; _ver_ auto-increments per val_date+source)
+│   │   ├── IRS_Valuation_<val_date>-<NNNNN>.csv  (DEFAULT — always written)
+│   │   ├── IRS_Netting_<val_date>-<NNNNN>.csv    (when netting_db + entity_rc present)
 │   │   ├── Debt_Summary_<val_date>.csv         (--debug-loan / --debug-full — computed hedged-debt Clean/Accrued/Dirty)
 │   │   ├── portfolio_<val_date>.xlsx           (--debug-full only)
 │   │   ├── detail/<trade_id>.xlsx              (--debug-full only)
@@ -641,10 +649,10 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 
 1. `pytest -q` — all unit tests + golden-master green.
 2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces:
-   - `IRS_Valuation_<val_date>-00001.csv` (always)
+   - `IRS_Valuation_<val_date>-<NNNNN>.csv` (always; `<NNNNN>` auto-incrementing submission version, or `--version N`)
    - `manifest_<val_date>.json`
    - With `--debug-full`: portfolio XLSX, detail per trade, debug per trade, parquet (+ Debt_Summary).
-2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` produces one `valdate_/rundate_` folder per date plus `batch_<UTCstamp>.{log,json}`; exit codes follow the standardized scheme.
+2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` produces one `valdate_/rundate_…_ver_` folder per date plus `batch_<UTCstamp>.{log,json}`; exit codes follow the standardized scheme.
 2c. Curve-input alternates exercised: `--pillar-dates` and `--pillar-dates-df` each price the same portfolio to numerically-equivalent DFs.
 2d. `-v` toggles INFO progress vs the default ERROR-only output.
 3. Hand-check one swap:

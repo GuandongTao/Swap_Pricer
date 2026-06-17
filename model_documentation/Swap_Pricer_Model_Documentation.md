@@ -131,6 +131,14 @@ IRS Netting, 21 columns), whose complete field-by-field derivation is documented
 in the accompanying attachments *IRS_Valuation_Output_Map.xlsx* and
 *IRS_Netting_Output_Map.xlsx*.
 
+Each feed filename and its header carry a 5-digit **submission version**
+(e.g. `IRS_Valuation_<val_date>-00001.csv`). The version is a sequence number
+per as-of date and data source: the model auto-increments it past any prior run
+for the same valuation date (so re-issuing a feed for an as-of date yields
+`00002`, `00003`, …), and it can be set explicitly when a specific submission
+number is required. The same stamp labels the run's output folder, so every
+artifact from a run is traceable to its submission version.
+
 ## 4.2 Model Methodology
 
 ### 4.2.1 Valuation Framework
@@ -341,10 +349,15 @@ date.
 
 Production feeds are written by dedicated writers: `io_prod` (49-column IRS
 Valuation CSV) and `io_prod_netting` (21-column IRS Netting CSV), matching the
-KPMG feed specifications exactly. Optional debug artifacts — a portfolio Excel
-workbook, per-trade detail and debug workbooks, a hedged-debt summary, and
-Parquet dumps — are produced under explicit flags (`--debug-loan`,
-`--debug-full`) and are off by default.
+KPMG feed specifications exactly. Each run is placed in a self-contained,
+versioned output folder (`valdate_<date>_rundate_<date>[ BBG]_ver_<NNNNN>`); the
+runner derives the submission version by scanning for prior runs of the same
+as-of date and data source and incrementing, or honors an explicit override, and
+threads that single stamp into the folder name, the feed filenames, and the feed
+header rows. Optional debug artifacts — a portfolio Excel workbook, per-trade
+detail and debug workbooks, a hedged-debt summary, and Parquet dumps — are
+produced under explicit flags (`--debug-loan`, `--debug-full`) and are off by
+default.
 
 ## 6.6 Batch Execution
 
