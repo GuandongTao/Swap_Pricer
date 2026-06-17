@@ -1,12 +1,15 @@
 """Portfolio pricer CLI.
 
 Usage:
-    # Default: ONLY the prod CSV (IRS_Valuation_<val_date>-00001.csv)
+    # Default: prod CSV (IRS_Valuation_<val_date>-00001.csv) + manifest (+ netting)
     python scripts/price_portfolio.py --val-date 2026-03-31
 
-    # Debug: prod CSV + portfolio workbook + per-trade detail + per-trade
-    #        debug + parquet (everything the pipeline can emit)
-    python scripts/price_portfolio.py --val-date 2026-03-31 --debug
+    # + hedged-debt summary (Debt_Summary_<val_date>.csv)
+    python scripts/price_portfolio.py --val-date 2026-03-31 --debug-loan
+
+    # Full debug: prod CSV + Debt_Summary + portfolio workbook + per-trade detail
+    #        + per-trade debug + parquet (everything the pipeline can emit)
+    python scripts/price_portfolio.py --val-date 2026-03-31 --debug-full
 
     # Alternate curve inputs
     python scripts/price_portfolio.py --val-date 2026-03-31 --pillar-dates -v
@@ -59,9 +62,15 @@ def main(argv: list[str] | None = None) -> int:
              "IRS Netting feed is skipped (warning recorded to manifest).",
     )
     p.add_argument(
-        "--debug", action="store_true",
-        help="Write EVERYTHING: prod CSV + portfolio workbook + per-trade detail + "
-             "per-trade debug + parquet. Default (no flag) writes only the prod CSV.",
+        "--debug-loan", action="store_true",
+        help="Also write the hedged-debt summary (Debt_Summary_<val_date>.csv). "
+             "Off by default; col AW is unaffected (the debt is always valued).",
+    )
+    p.add_argument(
+        "--debug-full", action="store_true",
+        help="Write EVERYTHING: prod CSV + Debt_Summary + portfolio workbook + "
+             "per-trade detail + per-trade debug + parquet. Superset of --debug-loan. "
+             "Default (no flag) writes only the prod CSV + manifest (+ netting).",
     )
     curve_src = p.add_mutually_exclusive_group()
     curve_src.add_argument(
@@ -129,15 +138,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         pf = Portfolio(curve_loader, fixing_loader, trade_loader)
-        # Default (no --debug): prod CSV only. --debug: everything.
+        # Default: prod CSV + manifest only. --debug-loan adds Debt_Summary;
+        # --debug-full adds everything (and implies --debug-loan).
         valuations, manifest = pf.run(
             val_date,
             out_dir=out_dir,
             write_prod=True,
-            write_portfolio_xlsx=args.debug,
-            write_detail=args.debug,
-            write_debug=args.debug,
-            write_parquet=args.debug,
+            write_debt_summary=args.debug_loan or args.debug_full,
+            write_portfolio_xlsx=args.debug_full,
+            write_detail=args.debug_full,
+            write_debug=args.debug_full,
+            write_parquet=args.debug_full,
             entity_rc=entity_rc,
             netting_db=netting_db,
             folder_suffix=folder_suffix,

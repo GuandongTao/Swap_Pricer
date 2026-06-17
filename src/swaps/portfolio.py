@@ -79,6 +79,7 @@ class Portfolio:
         write_debug: bool = False,
         write_portfolio_xlsx: bool = False,
         write_prod: bool = True,
+        write_debt_summary: bool = False,
         entity_rc: dict[str, str] | None = None,
         netting_db: dict[str, NettingRow] | None = None,
         folder_suffix: str = "",
@@ -268,12 +269,15 @@ class Portfolio:
             manifest.outputs["prod_csv"] = str(prod_path)
             # Debt_Summary artifact: the computed Clean/Accrued/Dirty for every
             # LH-hedged debt that fed col AW (empty file -- title + headers --
-            # when no LH trades). Replaces the externally-produced Deal_Summary.
-            debt_summary_path = out_dir / debt_summary_filename(val_date)
-            _log.info("Writing Debt Summary -> %s (%d debts)", debt_summary_path, len(debt_summary_rows))
-            with _timed(timings, "write_debt_summary"):
-                write_debt_summary_csv(debt_summary_path, debt_summary_rows)
-            manifest.outputs["debt_summary_csv"] = str(debt_summary_path)
+            # when no LH trades). Gated behind --debug-loan / --debug-full; the
+            # debt is still valued for col AW regardless. Replaces the
+            # externally-produced Deal_Summary.
+            if write_debt_summary:
+                debt_summary_path = out_dir / debt_summary_filename(val_date)
+                _log.info("Writing Debt Summary -> %s (%d debts)", debt_summary_path, len(debt_summary_rows))
+                with _timed(timings, "write_debt_summary"):
+                    write_debt_summary_csv(debt_summary_path, debt_summary_rows)
+                manifest.outputs["debt_summary_csv"] = str(debt_summary_path)
             # IRS Netting feed: same gating as IRS Valuation. Requires both the
             # netting DB (per-netting-id fields) and the entity_rc lookup
             # (CCID RC). If either is missing, skip with a warning rather than

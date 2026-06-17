@@ -255,21 +255,23 @@ The bumped PV is obtained by rebuilding the swap with its floating leg repointed
 
 Every run (single-date *or* one date within a batch) is self-contained under
 `output/valdate_<val_date>_rundate_<run_date>/`. **By default (no flag) the
-run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-00001.csv`).** Passing
-`--debug` flips every other artifact on (portfolio workbook + per-trade detail
-+ per-trade debug + parquet). A batch additionally drops `batch_<UTCstamp>.log`
-and `batch_<UTCstamp>.json` at the `output/` root. Full layout under
-`--debug`:
+run writes ONLY the prod CSV (`IRS_Valuation_<val_date>-00001.csv`) + manifest
+(+ netting when available).** `--debug-loan` additionally writes the hedged-debt
+summary; `--debug-full` flips every artifact on (Debt_Summary + portfolio
+workbook + per-trade detail + per-trade debug + parquet; superset of
+`--debug-loan`). A batch additionally drops `batch_<UTCstamp>.log` and
+`batch_<UTCstamp>.json` at the `output/` root. Full layout under `--debug-full`:
 
 ```
 output/
 ├── valdate_<val_date>_rundate_<run_date>/
-│   ├── IRS_Valuation_<val_date>-00001.csv   (ALWAYS, even without --debug)
+│   ├── IRS_Valuation_<val_date>-00001.csv   (ALWAYS — default)
 │   ├── IRS_Netting_<val_date>-00001.csv     (when netting_db + entity_rc present)
-│   ├── portfolio_<val_date>.xlsx            (only with --debug)
-│   ├── detail/<trade_id>.xlsx              (only with --debug)
-│   ├── debug/<trade_id>_debug.xlsx         (only with --debug)
-│   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet  (only with --debug)
+│   ├── Debt_Summary_<val_date>.csv          (--debug-loan / --debug-full)
+│   ├── portfolio_<val_date>.xlsx            (only with --debug-full)
+│   ├── detail/<trade_id>.xlsx              (only with --debug-full)
+│   ├── debug/<trade_id>_debug.xlsx         (only with --debug-full)
+│   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet  (only with --debug-full)
 │   └── manifest_<val_date>.json
 ├── batch_<UTCstamp>.log                    (batch runs only)
 └── batch_<UTCstamp>.json                   (batch runs only)
@@ -353,7 +355,7 @@ CCID = Entity-RC-NaturalAccount-SubAccount-InterEntity-InterCenter-Product-Reser
 
 **Footer sum columns:** G/H/I/J (Σ clean/accrued/dirty/dv01), Q/R (Σ notional twice), U/V/W (always 0), AK (Σ DA), AL (Σ DL), AW (Σ Hedged Debt MTM).
 
-**Hedged Debt MTM (AW):** `SC` → `−v.clean`. `LH` → the bond described by the trade's inline `debt_*` block is valued in-process (`value_debt`, **Fed-Funds-discounted** FixedLeg, obligor-signed/negative) and AW = its `Clean + USD Outstanding` (= `debt_notional`); the computed Clean/Accrued/Dirty are also written to `Debt_Summary_<val_date>.csv`. `hedge` is required; a blank/unknown value or an LH whose debt can't be priced raises a hard per-trade error.
+**Hedged Debt MTM (AW):** `SC` → `−v.clean`. `LH` → the bond described by the trade's inline `debt_*` block is valued in-process (`value_debt`, **Fed-Funds-discounted** FixedLeg, obligor-signed/negative) and AW = its `Clean + USD Outstanding` (= `debt_notional`); under `--debug-loan`/`--debug-full` the computed Clean/Accrued/Dirty are also written to `Debt_Summary_<val_date>.csv` (suppressed by default). `hedge` is required; a blank/unknown value or an LH whose debt can't be priced raises a hard per-trade error.
 
 ### IRS Netting CSV (`IRS_Netting_<val_date>-00001.csv`)
 
@@ -453,7 +455,7 @@ Every numeric class exposes `to_debug_frame()` (or named variants) returning a f
 | `FixedLeg` | `accrued_debug(val_date)` | Per-leg accrued breakdown |
 | `SwapPricer` | n/a — `SwapValuation` is the debug view | |
 
-**Debug workbook tabs** (`debug/<trade_id>_debug.xlsx`, `--debug` only):
+**Debug workbook tabs** (`debug/<trade_id>_debug.xlsx`, `--debug-full` only; LH trades also get `DebtCF` / `DebtAccrued`):
 - `SOFR_pillars`, `FF_pillars` — curve pillar audit
 - `SOFR_df_grid`, `FF_df_grid` — daily DF grid from val_date to last cashflow
 - `FixingsUsed` — historical fixings used
@@ -529,12 +531,12 @@ Swap Pricer/
 ├── output/
 │   ├── valdate_<val_date>_rundate_<run_date>/   (+ " BBG" suffix when --pillar-dates-df)
 │   │   ├── IRS_Valuation_<val_date>-00001.csv  (DEFAULT — always written)
-│   │   ├── Debt_Summary_<val_date>.csv         (DEFAULT — computed hedged-debt Clean/Accrued/Dirty)
 │   │   ├── IRS_Netting_<val_date>-00001.csv    (when netting_db + entity_rc present)
-│   │   ├── portfolio_<val_date>.xlsx           (--debug only)
-│   │   ├── detail/<trade_id>.xlsx              (--debug only)
-│   │   ├── debug/<trade_id>_debug.xlsx         (--debug only)
-│   │   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet  (--debug only)
+│   │   ├── Debt_Summary_<val_date>.csv         (--debug-loan / --debug-full — computed hedged-debt Clean/Accrued/Dirty)
+│   │   ├── portfolio_<val_date>.xlsx           (--debug-full only)
+│   │   ├── detail/<trade_id>.xlsx              (--debug-full only)
+│   │   ├── debug/<trade_id>_debug.xlsx         (--debug-full only)
+│   │   ├── parquet/{summary,floating_cf,fixed_cf,curves}.parquet  (--debug-full only)
 │   │   └── manifest_<val_date>.json
 │   ├── batch_<UTCstamp>.log                    (batch runs only)
 │   └── batch_<UTCstamp>.json                   (batch runs only)
@@ -582,8 +584,9 @@ Swap Pricer/
 
 ### CLI flags (both `price_portfolio.py` and `price_portfolio_batch.py`)
 
-- **No flag (default)** — writes ONLY the prod CSV (and netting CSV if applicable). No portfolio workbook, no per-trade detail, no parquet, no debug.
-- **`--debug`** — writes everything: prod CSV + portfolio workbook + per-trade detail + per-trade debug + parquet.
+- **No flag (default)** — writes ONLY the prod CSV + manifest (and netting CSV if applicable). No Debt_Summary, no portfolio workbook, no per-trade detail, no parquet, no debug.
+- **`--debug-loan`** — additionally writes the hedged-debt summary (`Debt_Summary_<val_date>.csv`). Col AW is unaffected either way (the debt is always valued).
+- **`--debug-full`** — writes everything: prod CSV + Debt_Summary + portfolio workbook + per-trade detail + per-trade debug + parquet. Superset of `--debug-loan`.
 - **Curve input mode** (mutually exclusive): `--pillar-dates` → `DatedCurveLoader`; `--pillar-dates-df` → `DatedDFCurveLoader`; default → `ExcelCurveLoader`.
 - **`--entity-rc <path>`** — Entity Reference Report CSV for CCID. Default `data/entity/Entity_Reference_Report.csv`. Optional; missing → all CCID cells blank.
 - **`-v` / `--verbose`** — default `ERROR` (cloud-friendly); `-v` switches to `INFO`.
@@ -640,7 +643,7 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
 2. `python scripts/price_portfolio.py --val-date YYYY-MM-DD` produces:
    - `IRS_Valuation_<val_date>-00001.csv` (always)
    - `manifest_<val_date>.json`
-   - With `--debug`: portfolio XLSX, detail per trade, debug per trade, parquet.
+   - With `--debug-full`: portfolio XLSX, detail per trade, debug per trade, parquet (+ Debt_Summary).
 2b. `python scripts/price_portfolio_batch.py --start D1 --end D2` produces one `valdate_/rundate_` folder per date plus `batch_<UTCstamp>.{log,json}`; exit codes follow the standardized scheme.
 2c. Curve-input alternates exercised: `--pillar-dates` and `--pillar-dates-df` each price the same portfolio to numerically-equivalent DFs.
 2d. `-v` toggles INFO progress vs the default ERROR-only output.
@@ -648,5 +651,5 @@ trade_definitions     (trade_id, notional, fixed_rate, start, maturity, …)
    - `clean + accrued == dirty` to < 1e-8
    - Sum of fixed PV − sum of floating PV ≈ reported NPV (within sign convention)
    - DV01 sign and magnitude reasonable vs. analytic estimate
-4. `--debug` flag produces per-trade debug workbooks.
+4. `--debug-full` flag produces per-trade debug workbooks (LH trades include DebtCF/DebtAccrued tabs); `--debug-loan` produces the Debt_Summary CSV.
 5. Manifest contains git_sha, input hashes, trade count, timestamps.
