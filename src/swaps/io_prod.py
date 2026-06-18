@@ -11,8 +11,12 @@ Layout (one file per run):
 Encoding: UTF-8 (no BOM). Cells with commas/quotes are CSV-quoted by the
 :mod:`csv` module's default :class:`csv.writer`.
 
-The version stamp is hard-coded to ``"00001"`` per spec; we are not in
-production yet and the consumer hasn't asked for an auto-increment scheme.
+The version stamp is a 5-digit submission sequence per ``(val_date, data
+source)``. The portfolio runner computes it (auto-incrementing across prior
+runs for the same as-of date, or honoring an explicit ``--version`` override)
+and threads it into both writers; the same string appears in the run folder
+name, the filename, and header-row cell 4. ``VERSION_STAMP`` below is only the
+fallback default used when a caller does not supply one.
 
 CME branch
 ==========
@@ -314,9 +318,9 @@ def write_csv_no_trailing_newline(out_path: Path, all_rows: list[list]) -> None:
         fh.write(buf.getvalue().rstrip("\r\n"))
 
 
-def prod_filename(val_date: date) -> str:
-    """Spec filename: ``IRS_Valuation_<YYYY-MM-DD>-00001.csv``."""
-    return f"IRS_Valuation_{val_date.isoformat()}-{VERSION_STAMP}.csv"
+def prod_filename(val_date: date, version: str = VERSION_STAMP) -> str:
+    """Spec filename: ``IRS_Valuation_<YYYY-MM-DD>-<version>.csv``."""
+    return f"IRS_Valuation_{val_date.isoformat()}-{version}.csv"
 
 
 def write_prod_csv(
@@ -326,6 +330,7 @@ def write_prod_csv(
     val_date: date,
     entity_rc: dict[str, str] | None = None,
     netting_db: dict[str, NettingRow] | None = None,
+    version: str = VERSION_STAMP,
 ) -> Path:
     """Write the prod feed CSV.
 
@@ -338,8 +343,8 @@ def write_prod_csv(
     header_row = [
         "H",
         val_date.strftime("%Y%m%d"),
-        prod_filename(val_date),
-        VERSION_STAMP,
+        prod_filename(val_date, version),
+        version,
         SOURCE_NAME,
     ]
     rows: list[list[str]] = []

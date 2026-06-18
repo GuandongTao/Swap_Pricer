@@ -209,11 +209,14 @@ VAL_ROWS = [
     # ── section ──
     ("SECTION", "HEDGED DEBT MTM", None, None, None),
     ("AW", "Hedged Debt MTM",        "Numeric",
-     "Short hedge: −v.clean (negative of swap's clean value).  "
-     "Long hedge: resolved via quantum_deal_number → Deal_Numbers.csv → "
-     "Deal_Summary_<date>.xlsx → Clean + USD Outstanding.",
-     "Required field. Blank / unresolvable Long hedge is a hard per-trade error. "
-     "Summed in footer row."),
+     "Short hedge (SC): −v.clean (negative of swap's clean value).  "
+     "Long hedge (LH): the hedged bond is valued in-process from the trade's inline "
+     "debt_* fields (FixedLeg model, principal-at-maturity, discounted on Fed Funds + "
+     "debt_discount_spread, signed from the obligor's view), then AW = debt Clean + "
+     "USD Outstanding (debt_notional).",
+     "Required field. An LH trade whose inline debt cannot be priced is a hard "
+     "per-trade error. Legacy external Deal_Numbers.csv / Deal_Summary_<date>.xlsx "
+     "feed is no longer used. Summed in footer row."),
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -352,7 +355,7 @@ val_wb = build_wb(
     col_headers=VAL_COLS,
     rows=VAL_ROWS,
     col_widths=[8, 28, 12, 60, 55],
-    title_text="IRS Valuation Output Field Map  —  IRS_Valuation_<val_date>-00001.csv  (49 columns, A–AW)",
+    title_text="IRS Valuation Output Field Map  —  IRS_Valuation_<val_date>-<NNNNN>.csv  (49 columns, A–AW)",
 )
 val_path = os.path.join(OUT_DIR, "IRS_Valuation_Output_Map.xlsx")
 val_wb.save(val_path)
@@ -363,7 +366,7 @@ net_wb = build_wb(
     col_headers=NET_COLS,
     rows=NET_ROWS,
     col_widths=[8, 32, 12, 60, 55],
-    title_text="IRS Netting Output Field Map  —  IRS_Netting_<val_date>-00001.csv  (21 columns, A–U)",
+    title_text="IRS Netting Output Field Map  —  IRS_Netting_<val_date>-<NNNNN>.csv  (21 columns, A–U)",
 )
 net_path = os.path.join(OUT_DIR, "IRS_Netting_Output_Map.xlsx")
 net_wb.save(net_path)

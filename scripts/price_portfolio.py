@@ -85,6 +85,15 @@ def main(argv: list[str] | None = None) -> int:
              "bypasses RateQuoting entirely).",
     )
     p.add_argument(
+        "--version", type=int, default=None, metavar="N",
+        help="Submission version (sequence) number for the output feed. "
+             "Default: auto-increment past any prior run for the same "
+             "(val_date, data source), starting at 1. The value is zero-padded "
+             "to 5 digits and drives the run folder name, the feed filename, and "
+             "header-row cell 4. Pass an explicit N to re-issue a specific "
+             "version (e.g. --version 7 -> 00007).",
+    )
+    p.add_argument(
         "-v", "--verbose", action="store_true",
         help="Show INFO-level progress (per-trade timings, run folder, "
              "convention warnings, matured-trade notices, no-curve skips). "
@@ -152,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
             entity_rc=entity_rc,
             netting_db=netting_db,
             folder_suffix=folder_suffix,
+            version=args.version,
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")
