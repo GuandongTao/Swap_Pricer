@@ -6,7 +6,7 @@ Daily mark-to-market pricer for a portfolio of USD fixed-vs-float interest rate 
 - **Fixed leg**: per-trade frequency and day-count.
 - **Discounting**: SOFR OIS zero curve (dual-curve: SOFR discounts, FF projects).
 
-See [`plan.md`](plan.md) for design and [`questions.md`](questions.md) for open items.
+See [`USER_MANUAL.md`](USER_MANUAL.md) for the script/flags guide.
 
 ## Quick start
 
@@ -14,7 +14,7 @@ See [`plan.md`](plan.md) for design and [`questions.md`](questions.md) for open 
 pip install -e .[dev]
 $env:PYTHONPATH = "$pwd\src"
 pytest -q
-python scripts/price_portfolio.py --val-date 2026-03-31 --debug
+python scripts/price_portfolio.py --val-date 2026-03-31 --debug-full
 ```
 
 ## Output layout
