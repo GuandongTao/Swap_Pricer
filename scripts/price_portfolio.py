@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
              "version (e.g. --version 7 -> 00007).",
     )
     p.add_argument(
-        "--new_deal", action="append", default=[], metavar="SWAP_ID",
+        "--new-deal", action="append", default=[], metavar="SWAP_ID",
         help="Newly-added swap id that triggers the 'Once'-frequency additional "
              "outputs (Swap Payment Schedule, Day 1 Valuations) for that id only. "
              "Repeatable for multiple new deals. Other additional outputs run on "

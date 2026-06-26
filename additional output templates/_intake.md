@@ -20,7 +20,7 @@
   (`month_end_curve_date`); fixings carry preceding bday forward.
 - **quarter-end** — last calendar day of Mar/Jun/Sep/Dec (⊂ month-end; independent predicate).
 - **Once** — NOT calendar-driven. Triggered by a CLI flag naming newly-added swap
-  id(s): `--new_deal-<swapid>` (multiple allowed). All `Once` items run ONLY for
+  id(s): `--new-deal-<swapid>` (multiple allowed). All `Once` items run ONLY for
   the named new id(s), in addition to whatever else is due. (Supersedes the earlier
   withdrawal of "Once".)
 - **Monthly** — appears on items 6 & 8. OPEN: is "Monthly" the same as "month-end"
@@ -38,7 +38,7 @@
   IRS Valuation/Netting feeds — ONE run, reusing the in-memory priced data (no
   repricing). Wired via `Portfolio.run` → `additional_outputs.integration.emit_for_run`.
 - Triggering = ALWAYS ON, schedule-gated (each item's frequency decides).
-- `Once` items gated by `--new_deal <id>` (repeatable) on `price_portfolio.py`.
+- `Once` items gated by `--new-deal <id>` (repeatable) on `price_portfolio.py`.
 - Standalone `scripts/additional_outputs.py` still exists for ad-hoc/testing
   (reprices independently; writes to its `--out-dir` as run_dir).
 
@@ -72,7 +72,7 @@
 **Engine** (all read-only reuse of the pricer; default output path untouched):
 `src/swaps/additional_outputs/{base,priced,envelope,helpers,month_end_data,
 treasury_valuation,payment_report,swap_payment_schedule,day1_valuations,registry}.py`
-+ CLI `scripts/additional_outputs.py` (`--val-date`, `--new_deal` repeatable, `--all`).
++ CLI `scripts/additional_outputs.py` (`--val-date`, `--new-deal` repeatable, `--all`).
 `priced.py` reprices via the same loaders/`build_swap`/`SwapPricer`, pairing each
 TradeDef↔SwapValuation. `envelope.py` = generic IRS-Valuation H/T feed writer.
 
@@ -93,7 +93,7 @@ freq display map (3M→Quarterly…); Internal Reference Number = raw deal id;
 Total Value = clean+accrued; Treasury Total-Value-Change diffs prior month's file in
 SFTP dir (blank if none); footer sums monetary cols; feed dates mm/dd/yyyy, Excel ISO;
 Day1 Key Rate=par rate; per-leg clean = signed pv_fixed / pv_floating; Once items keyed
-by `--new_deal` raw id.
+by `--new-deal` raw id.
 
 ---
 
@@ -161,7 +161,7 @@ Instruction: "skip this item for now." No further detail provided.
   to val_date (current calendar month of val_date?). Net Payment "happened in this month".
 
 ### 5. Swap Payment Schedule — `DRAFT`  (tab Swap Payment Schedule)
-- Frequency **Once** → gated by `--new_deal-<swapid>` flag (multiple ids ok); runs
+- Frequency **Once** → gated by `--new-deal-<swapid>` flag (multiple ids ok); runs
   only for the named new id(s).
 - Envelope: **Excel**, per `Payment Schedule.xlsx` (14 cols). Full per-leg schedule:
   interleaved fixed-leg rows (Start/End Date, Notional, Swap Rate, Payment Date) and
@@ -207,7 +207,7 @@ empty file named `AmexIntExp <yyyy.mm.dd>` to `email/`. Monthly.
    vs `USD-Federal Funds-H.15-OIS-COMPOUND`).
 4. **Treasury `Total Value Change`** — prior-month report lookup: match key + folder + first-month behavior.
 5. **Payment Report month scope** for a Daily report; payment/Net-Payment detection.
-6. **`--new_deal-<id>` flag** — exact CLI shape + how a "new" id maps to a trade row.
+6. **`--new-deal-<id>` flag** — exact CLI shape + how a "new" id maps to a trade row.
 7. **Filename date formats** per item (`Mon DD, YYYY`, `yyyy.mm.dd`, `mm.dd.yyyy`, `yyyy-mm-dd`).
 8. **Attribution approach** (item 8) — full design discussion.
 9. Several items reuse pricer internals (schedules, cashflows, DV01, accrued) — wiring

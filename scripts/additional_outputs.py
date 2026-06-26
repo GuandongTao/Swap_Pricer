@@ -2,17 +2,17 @@
 
 Produces schedule-driven additional output files. One command per val_date;
 ``--all`` forces every registered item regardless of its schedule. ``Once`` items
-run only for swap ids named via ``--new_deal`` (repeatable).
+run only for swap ids named via ``--new-deal`` (repeatable).
 
 Usage:
     # produce whichever additional outputs are due for this date
     python scripts/additional_outputs.py --val-date 2026-03-31
 
     # also produce the "Once" items for newly-added swap id(s)
-    python scripts/additional_outputs.py --val-date 2026-03-31 --new_deal 20026619 --new_deal 20026620
+    python scripts/additional_outputs.py --val-date 2026-03-31 --new-deal 20026619 --new-deal 20026620
 
     # force every additional output regardless of schedule
-    python scripts/additional_outputs.py --val-date 2026-03-31 --all --new_deal 20026619
+    python scripts/additional_outputs.py --val-date 2026-03-31 --all --new-deal 20026619
 
 Exit codes:
     0  success      1  an item failed      2  CLI usage error
@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--val-date", required=True, help="ISO date, e.g. 2026-03-31")
     p.add_argument("--data-dir", default=str(ROOT / "data"), help="Base data directory")
     p.add_argument("--out-dir", default=str(ROOT / "output"), help="Output dir (SFTP channel root)")
-    p.add_argument("--new_deal", action="append", default=[], metavar="SWAP_ID",
+    p.add_argument("--new-deal", action="append", default=[], metavar="SWAP_ID",
                    help="Newly-added swap id to trigger 'Once' items (repeatable)")
     p.add_argument("--all", action="store_true", help="Force all items regardless of schedule")
     p.add_argument("-v", "--verbose", action="store_true")

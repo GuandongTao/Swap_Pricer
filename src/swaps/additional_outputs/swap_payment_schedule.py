@@ -1,7 +1,7 @@
 """Item 5: Swap Payment Schedule (frequency Once, SFTP).
 
 Excel per ``Payment Schedule.xlsx``. Produced only for the swap id(s) named via
-``--new_deal-<id>``. Full per-leg schedule: fixed-leg rows and floating-leg rows
+``--new-deal-<id>``. Full per-leg schedule: fixed-leg rows and floating-leg rows
 interleaved by payment date. Columns that are blank in the template stay blank.
 
 ASSUMPTIONS (confirm — see _intake.md):

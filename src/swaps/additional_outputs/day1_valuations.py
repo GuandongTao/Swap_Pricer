@@ -2,7 +2,7 @@
 
 Excel per ``Day 1 Valuations.xlsx``: a summary block, a fixed-vs-floating leg
 summary, then per-leg cashflow detail (as in the debug workbook). Produced only
-for swap id(s) named via ``--new_deal-<id>``.
+for swap id(s) named via ``--new-deal-<id>``.
 
 ASSUMPTIONS (confirm — see _intake.md):
 * Key Rate = par rate; Total Value = clean + accrued.

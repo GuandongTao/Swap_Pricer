@@ -28,7 +28,7 @@ class Frequency(str, Enum):
     DAILY = "daily"
     MONTH_END = "month-end"
     QUARTER_END = "quarter-end"
-    ONCE = "once"  # not calendar-driven; gated by --new_deal-<id>
+    ONCE = "once"  # not calendar-driven; gated by --new-deal-<id>
 
 
 class Channel(str, Enum):
@@ -87,7 +87,7 @@ class AdditionalOutput:
 def is_due(freq: Frequency, val_date: date) -> bool:
     """True if a *calendar-driven* item of ``freq`` is due for ``val_date``.
 
-    ``ONCE`` is never calendar-due (gated by ``--new_deal-<id>``); see
+    ``ONCE`` is never calendar-due (gated by ``--new-deal-<id>``); see
     :func:`should_run`. Frequencies are independent predicates: a quarter-end
     date is also a month-end, so both fire on Mar/Jun/Sep/Dec EOM.
     """
