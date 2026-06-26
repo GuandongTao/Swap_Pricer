@@ -94,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
              "version (e.g. --version 7 -> 00007).",
     )
     p.add_argument(
+        "--new_deal", action="append", default=[], metavar="SWAP_ID",
+        help="Newly-added swap id that triggers the 'Once'-frequency additional "
+             "outputs (Swap Payment Schedule, Day 1 Valuations) for that id only. "
+             "Repeatable for multiple new deals. Other additional outputs run on "
+             "their own schedule regardless.",
+    )
+    p.add_argument(
         "-v", "--verbose", action="store_true",
         help="Show INFO-level progress (per-trade timings, run folder, "
              "convention warnings, matured-trade notices, no-curve skips). "
@@ -162,6 +169,8 @@ def main(argv: list[str] | None = None) -> int:
             netting_db=netting_db,
             folder_suffix=folder_suffix,
             version=args.version,
+            data_dir=data_dir,
+            new_deal_ids=frozenset(str(x).strip() for x in args.new_deal if str(x).strip()),
         )
     except Exception:
         logging.getLogger("price_portfolio").exception("Run failed")

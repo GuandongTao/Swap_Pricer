@@ -117,6 +117,9 @@ class Portfolio:
         netting_db: dict[str, NettingRow] | None = None,
         folder_suffix: str = "",
         version: str | int | None = None,
+        data_dir: str | Path | None = None,
+        additional_outputs: bool = True,
+        new_deal_ids: frozenset[str] = frozenset(),
     ) -> tuple[list[SwapValuation], RunManifest]:
         manifest = RunManifest.new(val_date)
 
@@ -409,6 +412,31 @@ class Portfolio:
                     manifest.run_id, run_date, manifest.git_sha,
                 )
                 manifest.outputs["parquet"] = {k: str(p) for k, p in paths.items()}
+
+        # Additional outputs (Treasury, Payment Report, Day 1, ...): generated in
+        # this SAME run from the in-memory priced data -- schedule-gated, no
+        # repricing. SFTP items land in this run folder; email items in
+        # <run folder>/email. Best-effort: a failure here never fails the run.
+        if additional_outputs and data_dir is not None:
+            try:
+                from .additional_outputs.integration import emit_for_run
+
+                with _timed(timings, "additional_outputs"):
+                    res = emit_for_run(
+                        val_date=val_date,
+                        data_dir=Path(data_dir),
+                        run_dir=out_dir,
+                        out_root=base_out,
+                        trades=trades,
+                        valuations=valuations,
+                        swaps_by_id=swaps_by_id,
+                        md=md,
+                        new_deal_ids=new_deal_ids,
+                    )
+                if res:
+                    manifest.outputs["additional_outputs"] = res
+            except Exception:  # noqa: BLE001 - never let extras fail the core run
+                _log.exception("Additional outputs failed (core run unaffected)")
 
         manifest.finished_at = datetime.now(timezone.utc)
         manifest.status = "ok" if not manifest.errors else "partial"

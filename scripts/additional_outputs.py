@@ -63,10 +63,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     new_deal_ids = frozenset(str(x).strip() for x in args.new_deal if str(x).strip())
+    out_dir = Path(args.out_dir)
     ctx = RunContext(
         val_date=val_date,
         data_dir=Path(args.data_dir),
-        out_dir=Path(args.out_dir),
+        run_dir=out_dir,
+        out_root=out_dir,
         new_deal_ids=new_deal_ids,
     )
 
@@ -76,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         if not should_run(item, val_date, new_deal_ids, force=args.all):
             log.info("skip   %-26s (%s)", item.name, item.frequency.value)
             continue
-        dest = resolve_channel_dir(item.channel, ctx.out_dir)
+        dest = resolve_channel_dir(item.channel, ctx.run_dir)
         try:
             paths = item.produce(ctx, dest)
         except Exception as e:  # noqa: BLE001 - report per-item, keep going

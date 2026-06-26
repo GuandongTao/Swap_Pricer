@@ -44,19 +44,24 @@ def _prev_month_end(d: date) -> date:
     return first - timedelta(days=1)
 
 
-def _prior_total_values(dest_dir: Path, val_date: date) -> dict[str, str]:
-    """Total Value by Internal Reference Number from the previous month's report."""
-    prev = _prev_month_end(val_date)
-    prior = dest_dir / _filename(prev)
-    if not prior.exists():
+def _prior_total_values(out_root: Path, val_date: date) -> dict[str, str]:
+    """Total Value by Internal Reference Number from the previous month's report.
+
+    Each run writes into its own dated folder, so the previous month's Treasury
+    report lives in a different run folder. Search the output root recursively for
+    the previous month-end's file; if several (re-runs), use the most recent.
+    """
+    prev_name = _filename(_prev_month_end(val_date))
+    matches = sorted(Path(out_root).rglob(prev_name), key=lambda p: p.stat().st_mtime)
+    if not matches:
         return {}
-    return read_feed_column(prior, key_col=_REF, value_col=_TOTAL_VALUE)
+    return read_feed_column(matches[-1], key_col=_REF, value_col=_TOTAL_VALUE)
 
 
 def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
     val_date = ctx.val_date
     pp = ctx.priced()
-    prior = _prior_total_values(dest_dir, val_date)
+    prior = _prior_total_values(ctx.out_root, val_date)
 
     rows: list[list[str]] = []
     for pt in pp.priced:

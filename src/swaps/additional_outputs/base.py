@@ -40,21 +40,34 @@ class Channel(str, Enum):
 
 @dataclass
 class RunContext:
-    """Inputs + lazily-priced portfolio shared across items in one run."""
+    """Inputs + lazily-priced portfolio shared across items in one run.
+
+    * ``run_dir`` -- this run's dated output folder (SFTP base; email = run_dir/email).
+    * ``out_root`` -- the base ``output/`` dir, for cross-run lookups (e.g. the
+      Treasury report's previous-month file, which lives in a different run folder).
+    """
 
     val_date: date
     data_dir: Path
-    out_dir: Path
+    run_dir: Path
+    out_root: Path
     new_deal_ids: frozenset[str] = frozenset()
     _priced: "PricedPortfolio | None" = field(default=None, init=False, repr=False, compare=False)
 
     def priced(self) -> "PricedPortfolio":
-        """Price the portfolio once (cached). Read-only reuse of the pricer."""
+        """Price the portfolio once (cached). Read-only reuse of the pricer.
+
+        In the integrated single-run path the priced portfolio is preset from the
+        normal run's in-memory valuations (no repricing); standalone it is built.
+        """
         if self._priced is None:
             from .priced import PricedPortfolio
 
             self._priced = PricedPortfolio.build(self.val_date, self.data_dir)
         return self._priced
+
+    def set_priced(self, priced: "PricedPortfolio") -> None:
+        self._priced = priced
 
 
 # A producer takes (ctx, dest_dir) and returns the files written.
@@ -98,17 +111,14 @@ def should_run(item: AdditionalOutput, val_date: date, new_deal_ids: frozenset[s
     return is_due(item.frequency, val_date)
 
 
-def resolve_channel_dir(channel: Channel, out_dir: Path) -> Path:
-    """Destination directory for a channel.
+def resolve_channel_dir(channel: Channel, run_dir: Path) -> Path:
+    """Destination directory for a channel, relative to this run's dated folder.
 
-    * EMAIL -> ``<out_dir>/../email`` (parallel to ``output/``), flat.
-    * SFTP  -> ``out_dir`` itself (the original output folder).
-
-    NOTE: the exact SFTP sub-location (root vs. ``run_<val_date>/``) is not yet
-    pinned down; revisit when wiring into the main pipeline.
+    * SFTP  -> ``run_dir`` (alongside the IRS Valuation feed).
+    * EMAIL -> ``run_dir/email`` (a subfolder of the dated run folder).
     """
     if channel is Channel.EMAIL:
-        return out_dir.parent / "email"
+        return run_dir / "email"
     if channel is Channel.SFTP:
-        return out_dir
+        return run_dir
     raise ValueError(f"Unknown channel: {channel!r}")

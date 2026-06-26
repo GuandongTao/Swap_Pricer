@@ -26,14 +26,21 @@
 - **Monthly** — appears on items 6 & 8. OPEN: is "Monthly" the same as "month-end"
   (last calendar day), or a different cadence? **Needs confirmation.**
 
-### Channels
-- **SFTP** → existing `output/` tree. **EMAIL** → `email/` folder parallel to
-  `output/` (flat, original filenames).
+### Channels (UPDATED 2026-06-26 — supersedes "email parallel to output/")
+- **SFTP** → this run's dated folder `output/valdate_<date>_..._ver_<NNNNN>/`
+  (alongside the IRS Valuation feed).
+- **EMAIL** → `email/` SUBFOLDER inside that same dated run folder.
+- Cross-run lookups (Treasury "Total Value Change" prior-month file) scan the
+  `output/` root recursively.
 
-### Run model
-- One command per val_date: defaults + every item due that date.
-- Force command: defaults + all items.
-- `Once` items additionally gated by `--new_deal-<id>` flags.
+### Run model (UPDATED 2026-06-26 — SINGLE RUN)
+- Additional outputs are emitted by the SAME `price_portfolio.py` run as the
+  IRS Valuation/Netting feeds — ONE run, reusing the in-memory priced data (no
+  repricing). Wired via `Portfolio.run` → `additional_outputs.integration.emit_for_run`.
+- Triggering = ALWAYS ON, schedule-gated (each item's frequency decides).
+- `Once` items gated by `--new_deal <id>` (repeatable) on `price_portfolio.py`.
+- Standalone `scripts/additional_outputs.py` still exists for ad-hoc/testing
+  (reprices independently; writes to its `--out-dir` as run_dir).
 
 ### Envelopes (per-item, NOT uniform)
 - Raw input files (Month End Data); **KPMG IRS-Valuation H/T header+footer feed**
