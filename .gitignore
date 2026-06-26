@@ -40,3 +40,6 @@ tests/golden/*.json
 #   /output/                              -- folder kept, artifacts ignored (regenerated each run)
 #   data/trades/                          -- already tracked
 #   data/fixings/                         -- TRACKED (uploaded to the repo)
+
+# Coding-time reference specs/intake — never ship
+/additional output templates/
