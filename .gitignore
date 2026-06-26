@@ -32,6 +32,9 @@ tests/golden/*.json
 /output/*
 !/output/.gitkeep
 
+# Additional outputs routed to the Email channel (generated each run).
+/email/
+
 # Decisions:
 #   data/curves/market_environment_*.csv  -- TRACKED (raw production curve export)
 #   /output/                              -- folder kept, artifacts ignored (regenerated each run)
