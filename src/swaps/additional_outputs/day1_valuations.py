@@ -4,6 +4,13 @@ Excel per ``Day 1 Valuations.xlsx``: a summary block, a fixed-vs-floating leg
 summary, then per-leg cashflow detail (as in the debug workbook). Produced only
 for swap id(s) named via ``--new-deal-<id>``.
 
+AS-OF DATE: a Day 1 valuation is struck as of the deal's TRADE date
+(``deal_date``), not the run's val_date. Each new deal is therefore repriced as
+of its own trade date. If the trade-date market data isn't on disk (no
+``market_environment_<deal_date>.csv``), it falls back to the run's val_date
+valuation with a warning. The "Value Date" cell + filename reflect the as-of
+date actually used.
+
 ASSUMPTIONS (confirm — see _intake.md):
 * Key Rate = par rate; Total Value = clean + accrued.
 * PV01 = present value of a 1bp fixed-leg annuity; split DV01 computed per leg
@@ -15,18 +22,34 @@ ASSUMPTIONS (confirm — see _intake.md):
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import Workbook
 
 from .base import RunContext
-from .helpers import coupon_rows, period_fixing_dates, xldate, xlnum
-from .priced import leg_risk
+from .helpers import _as_date, coupon_rows, period_fixing_dates, xldate, xlnum
+from .priced import PricedPortfolio, leg_risk
+
+log = logging.getLogger("swaps.additional_outputs")
 
 
-def _filename(raw_id: str, val_date: date) -> str:
-    return f"{raw_id} {val_date:%m.%d.%Y} - Day 1 Valuations.xlsx"
+def _filename(raw_id: str, asof: date) -> str:
+    return f"{raw_id} {asof:%m.%d.%Y} - Day 1 Valuations.xlsx"
+
+
+def _asof_portfolio(deal_date: date, ctx: RunContext, cache: dict) -> "PricedPortfolio | None":
+    """Portfolio priced as of a deal's trade date (cached). None if data missing."""
+    if deal_date in cache:
+        return cache[deal_date]
+    try:
+        pp = PricedPortfolio.build(deal_date, ctx.data_dir)
+    except Exception as e:  # noqa: BLE001 - missing trade-date market data -> fallback
+        log.warning("Day 1: no market data as of trade date %s (%s); using val_date", deal_date, e)
+        pp = None
+    cache[deal_date] = pp
+    return pp
 
 
 def _signs(pay_fixed: bool) -> tuple[float, float]:
@@ -35,7 +58,7 @@ def _signs(pay_fixed: bool) -> tuple[float, float]:
     return s, -s
 
 
-def _write_sheet(ws, pt, val_date: date, md) -> None:
+def _write_sheet(ws, pt, asof: date, md) -> None:
     td, v = pt.trade, pt.valuation
     fx_sign, fl_sign = _signs(bool(td.pay_fixed))
     total_value = v.clean + v.accrued
@@ -51,7 +74,7 @@ def _write_sheet(ws, pt, val_date: date, md) -> None:
         ("Cash Accrued Interest:", 0),
         ("Total Value:", xlnum(total_value)),
         ("Timestamp:", datetime.now()),
-        ("Value Date:", val_date),
+        ("Value Date:", asof),
         ("Valuation Currency", "USD"),
     ]
     row = 1
@@ -117,22 +140,35 @@ def _write_sheet(ws, pt, val_date: date, md) -> None:
 
 
 def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
-    pp = ctx.priced()
+    pp_val = ctx.priced()  # priced as of run val_date (fallback)
     written: list[Path] = []
+    asof_cache: dict = {}
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     for raw_id in sorted(ctx.new_deal_ids):
-        matches = pp.by_raw_id(raw_id)
-        if not matches:
+        val_matches = pp_val.by_raw_id(raw_id)
+        if not val_matches:
             continue
+
+        # Day 1 is valued as of the deal's trade date; reprice there when possible,
+        # else fall back to the run val_date. Coerce to a real date (the YAML loader
+        # may leave deal_date as a string).
+        deal_date = _as_date(val_matches[0].trade.deal_date)
+        asof, matches, md = ctx.val_date, val_matches, pp_val.md
+        if deal_date is not None:
+            pp_dd = _asof_portfolio(deal_date, ctx, asof_cache)
+            dd_matches = pp_dd.by_raw_id(raw_id) if pp_dd is not None else []
+            if dd_matches:
+                asof, matches, md = deal_date, dd_matches, pp_dd.md
+
         wb = Workbook()
         ws = wb.active
         ws.title = "Day 1 Valuation"
         # One swap per file; if an id maps to multiple, use the first sheet + extras.
-        _write_sheet(ws, matches[0], ctx.val_date, pp.md)
+        _write_sheet(ws, matches[0], asof, md)
         for extra in matches[1:]:
-            _write_sheet(wb.create_sheet(), extra, ctx.val_date, pp.md)
-        out = dest_dir / _filename(raw_id, ctx.val_date)
+            _write_sheet(wb.create_sheet(), extra, asof, md)
+        out = dest_dir / _filename(raw_id, asof)
         wb.save(out)
         written.append(out)
     return written

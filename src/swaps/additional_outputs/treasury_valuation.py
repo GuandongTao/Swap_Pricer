@@ -16,6 +16,7 @@ ASSUMPTIONS (confirm — see _intake.md open questions):
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -44,15 +45,25 @@ def _prev_month_end(d: date) -> date:
     return first - timedelta(days=1)
 
 
+_VER_RE = re.compile(r"_ver_(\d+)")
+
+
+def _ver_key(p: Path) -> tuple[int, float]:
+    """Sort key: submission version in the run-folder name, then mtime as tiebreak."""
+    m = _VER_RE.search(p.parent.name)
+    return (int(m.group(1)) if m else -1, p.stat().st_mtime)
+
+
 def _prior_total_values(out_root: Path, val_date: date) -> dict[str, str]:
     """Total Value by Internal Reference Number from the previous month's report.
 
-    Each run writes into its own dated folder, so the previous month's Treasury
-    report lives in a different run folder. Search the output root recursively for
-    the previous month-end's file; if several (re-runs), use the most recent.
+    Each run writes into its own dated ``..._ver_<NNNNN>/`` folder, so a month-end
+    can have several re-run versions. Search the output root recursively for the
+    previous month-end's report and use the HIGHEST submission version (the
+    latest re-issue), not merely the most recently touched file.
     """
     prev_name = _filename(_prev_month_end(val_date))
-    matches = sorted(Path(out_root).rglob(prev_name), key=lambda p: p.stat().st_mtime)
+    matches = sorted(Path(out_root).rglob(prev_name), key=_ver_key)
     if not matches:
         return {}
     return read_feed_column(matches[-1], key_col=_REF, value_col=_TOTAL_VALUE)
