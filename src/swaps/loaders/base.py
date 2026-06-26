@@ -84,6 +84,9 @@ class TradeDef:
     fixed_first_period_accrual_end_date: date | None = None
 
     # --- Floating leg conventions (per-leg) ---
+    # Floating rate index id (e.g. USD-FEDFUNDS-ON). Reference/passthrough only;
+    # pricing currently always uses Fed Funds. Optional, blank ok.
+    floating_index: str = ""
     # Blank floating_frequency -> fixed_frequency (standard OIS: shared periods).
     floating_frequency: str = ""
     floating_daycount: str = "ACT/360"
