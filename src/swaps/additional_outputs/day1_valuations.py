@@ -21,7 +21,7 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from .base import RunContext
-from .helpers import coupon_rows, iso, num, period_fixing_dates
+from .helpers import coupon_rows, period_fixing_dates, xldate, xlnum
 from .priced import leg_risk
 
 
@@ -43,15 +43,15 @@ def _write_sheet(ws, pt, val_date: date, md) -> None:
 
     # 1. Summary block (label, value) in cols A/B.
     summary = [
-        ("Key Rate:", num(v.par_rate)),
-        ("DV01:", num(v.dv01)),
-        ("PV01:", num(risk["pv01"])),
-        ("Clean Price:", num(v.clean)),
-        ("MTM Accrued Interest:", num(v.accrued)),
-        ("Cash Accrued Interest:", "0"),
-        ("Total Value:", num(total_value)),
-        ("Timestamp:", datetime.now().strftime("%Y-%b-%d %H:%M:%S")),
-        ("Value Date:", val_date.strftime("%Y-%b-%d")),
+        ("Key Rate:", xlnum(v.par_rate)),
+        ("DV01:", xlnum(v.dv01)),
+        ("PV01:", xlnum(risk["pv01"])),
+        ("Clean Price:", xlnum(v.clean)),
+        ("MTM Accrued Interest:", xlnum(v.accrued)),
+        ("Cash Accrued Interest:", 0),
+        ("Total Value:", xlnum(total_value)),
+        ("Timestamp:", datetime.now()),
+        ("Value Date:", val_date),
         ("Valuation Currency", "USD"),
     ]
     row = 1
@@ -65,13 +65,13 @@ def _write_sheet(ws, pt, val_date: date, md) -> None:
     ws.cell(row=row, column=1, value="Fixed Leg Value:")
     ws.cell(row=row, column=9, value="Floating Leg Value:")
     leg_rows = [
-        ("DV01:", num(risk["dv01_fixed"]), "DV01:", num(risk["dv01_floating"])),
-        ("PV01:", num(risk["pv01"]), "PV01:", ""),  # PV01 is the fixed-leg annuity; floating blank per sample
-        ("Clean Price:", num(fx_sign * v.pv_fixed), "Clean Price:", num(fl_sign * v.pv_floating)),
-        ("MTM Accrued Interest:", "0", "MTM Accrued Interest:", "0"),
-        ("Cash Accrued Interest:", "0", "Cash Accrued Interest:", "0"),
-        ("Total Value:", num(fx_sign * v.pv_fixed), "Total Value:", num(fl_sign * v.pv_floating)),
-        ("Spot Exchange:", "", "Spot Exchange:", ""),
+        ("DV01:", xlnum(risk["dv01_fixed"]), "DV01:", xlnum(risk["dv01_floating"])),
+        ("PV01:", xlnum(risk["pv01"]), "PV01:", None),  # PV01 is the fixed-leg annuity; floating blank per sample
+        ("Clean Price:", xlnum(fx_sign * v.pv_fixed), "Clean Price:", xlnum(fl_sign * v.pv_floating)),
+        ("MTM Accrued Interest:", 0, "MTM Accrued Interest:", 0),
+        ("Cash Accrued Interest:", 0, "Cash Accrued Interest:", 0),
+        ("Total Value:", xlnum(fx_sign * v.pv_fixed), "Total Value:", xlnum(fl_sign * v.pv_floating)),
+        ("Spot Exchange:", None, "Spot Exchange:", None),
     ]
     for f_lbl, f_val, g_lbl, g_val in leg_rows:
         row += 1
@@ -100,18 +100,18 @@ def _write_sheet(ws, pt, val_date: date, md) -> None:
     base = row + 1
 
     for i, (_, r) in enumerate(fixed.iterrows()):
-        vals = [iso(r["accrual_start"]), iso(r["accrual_end"]), iso(r["payment_date"]),
-                num(r["notional"]), num(r["coupon_rate"]), num(r["df_to_payment"]),
-                num(r["payment_amount"]), num(r["discounted_cashflow"])]
+        vals = [xldate(r["accrual_start"]), xldate(r["accrual_end"]), xldate(r["payment_date"]),
+                xlnum(r["notional"]), xlnum(r["coupon_rate"]), xlnum(r["df_to_payment"]),
+                xlnum(r["payment_amount"]), xlnum(r["discounted_cashflow"])]
         for j, val in enumerate(vals):
             ws.cell(row=base + i, column=1 + j, value=val)
 
     for i, (_, r) in enumerate(floating.iterrows()):
         fix = fixings.get((r["accrual_start"], r["accrual_end"]))
-        vals = [iso(r["accrual_start"]), iso(r["accrual_end"]), iso(fix) if fix else "",
-                iso(r["payment_date"]), num(r["notional"]), num(r["compounded_coupon"]),
-                num(r["spread"]), num(r["df_to_payment"]), num(r["payment_amount"]),
-                num(r["discounted_cashflow"])]
+        vals = [xldate(r["accrual_start"]), xldate(r["accrual_end"]), xldate(fix),
+                xldate(r["payment_date"]), xlnum(r["notional"]), xlnum(r["compounded_coupon"]),
+                xlnum(r["spread"]), xlnum(r["df_to_payment"]), xlnum(r["payment_amount"]),
+                xlnum(r["discounted_cashflow"])]
         for j, val in enumerate(vals):
             ws.cell(row=base + i, column=10 + j, value=val)
 

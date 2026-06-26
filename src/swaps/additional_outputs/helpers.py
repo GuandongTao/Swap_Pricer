@@ -51,6 +51,30 @@ def _as_date(x: object) -> date | None:
         return None
 
 
+def xlnum(x: object):
+    """Native numeric value for an Excel cell (so it's NOT stored as text).
+
+    Returns None for blank/NaN, int for integral values, float otherwise, and the
+    original object when it isn't numeric (e.g. an already-formatted string).
+    """
+    if x is None or x == "":
+        return None
+    if isinstance(x, bool):
+        return x
+    try:
+        f = float(x)
+    except (ValueError, TypeError):
+        return x
+    if math.isnan(f):
+        return None
+    return int(f) if f.is_integer() else f
+
+
+def xldate(x: object):
+    """Native date value for an Excel cell (real date, not text). None when blank."""
+    return _as_date(x)
+
+
 def mdy(x: object) -> str:
     """mm/dd/yyyy (the production-CSV date convention). Blank when not a date."""
     d = _as_date(x)

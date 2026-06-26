@@ -18,7 +18,7 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from .base import RunContext
-from .helpers import coupon_rows, iso, num, period_fixing_dates
+from .helpers import coupon_rows, period_fixing_dates, xldate, xlnum
 
 FIELDS = [
     "Start Date", "End Date", "Floating Start Date", "Floating Period End Date",
@@ -37,19 +37,19 @@ def _rows_for(pt) -> list[list]:
 
     for _, r in coupon_rows(v.fixed_cf).iterrows():
         rows.append((r["payment_date"], [
-            iso(r["accrual_start"]),   # Start Date
-            iso(r["accrual_end"]),     # End Date
-            "", "",                    # Floating Start/End (blank for a fixed row)
-            num(r["notional"]),        # Notional
-            num(r["coupon_rate"]),     # Swap Rate
-            "",                        # Fixed Payment [blank per template]
-            "",                        # Rate Fixing Date
-            "",                        # Index Rate [blank]
-            "",                        # Spread
-            "",                        # Floating Interest Rate [blank]
-            "",                        # Floating Payment [blank]
-            "",                        # Net Amount [blank]
-            iso(r["payment_date"]),    # Payment Date
+            xldate(r["accrual_start"]),   # Start Date
+            xldate(r["accrual_end"]),     # End Date
+            None, None,                   # Floating Start/End (blank for a fixed row)
+            xlnum(r["notional"]),         # Notional
+            xlnum(r["coupon_rate"]),      # Swap Rate
+            None,                         # Fixed Payment [blank per template]
+            None,                         # Rate Fixing Date
+            None,                         # Index Rate [blank]
+            None,                         # Spread
+            None,                         # Floating Interest Rate [blank]
+            None,                         # Floating Payment [blank]
+            None,                         # Net Amount [blank]
+            xldate(r["payment_date"]),    # Payment Date
         ]))
 
     fixings = period_fixing_dates(v.floating_cf)
@@ -57,19 +57,19 @@ def _rows_for(pt) -> list[list]:
         key = (r["accrual_start"], r["accrual_end"])
         fix = fixings.get(key)
         rows.append((r["payment_date"], [
-            "", "",                    # Start/End (blank for a floating row)
-            iso(r["accrual_start"]),   # Floating Start Date
-            iso(r["accrual_end"]),     # Floating Period End Date
-            num(r["notional"]),        # Notional
-            "",                        # Swap Rate (fixed-only)
-            "",                        # Fixed Payment [blank]
-            iso(fix) if fix else "",   # Rate Fixing Date
-            "",                        # Index Rate [blank]
-            num(r["spread"]),          # Spread
-            "",                        # Floating Interest Rate [blank]
-            "",                        # Floating Payment [blank]
-            "",                        # Net Amount [blank]
-            iso(r["payment_date"]),    # Payment Date
+            None, None,                   # Start/End (blank for a floating row)
+            xldate(r["accrual_start"]),   # Floating Start Date
+            xldate(r["accrual_end"]),     # Floating Period End Date
+            xlnum(r["notional"]),         # Notional
+            None,                         # Swap Rate (fixed-only)
+            None,                         # Fixed Payment [blank]
+            xldate(fix),                  # Rate Fixing Date
+            None,                         # Index Rate [blank]
+            xlnum(r["spread"]),           # Spread
+            None,                         # Floating Interest Rate [blank]
+            None,                         # Floating Payment [blank]
+            None,                         # Net Amount [blank]
+            xldate(r["payment_date"]),    # Payment Date
         ]))
 
     rows.sort(key=lambda t: (str(t[0]),))
