@@ -1,27 +1,26 @@
-"""Item 2: Hedge Summary (monthly, SFTP).
+"""Item 2: Hedge Summary (monthly = month-end, SFTP).
 
-Plain Excel workbook (header row + one row per IRS position) per
-``Hedge Sumary.xlsx``. NOT the IRS-Valuation H/T feed (no such instruction; the
-example is an .xlsx).
+Plain CSV (header row + one row per IRS position) per ``Hedge Sumary.xlsx``.
+NOT the IRS-Valuation H/T feed (no such instruction).
 
-ASSUMPTIONS (confirm — see _intake.md):
-* xlsx (not csv); "Monthly" coded as month-end (cadence undefined — confirm).
-* Legal Entity / Clearing House / Product hard-coded per the sample.
-* Spread = floating spread in bps, 2dp, "<x> bps". Strike = raw fixed rate
-  (instruction says "2-decimal % format" but the sample shows the raw rate).
-* Intrinsic Value = Termination Value = dirty (clean + accrued); Key Rate = par.
-* Alias = "<YYYY-MM of trade date> IR Swap <ccy> $<notional> - CME".
+CONFIRMED (2026-06-30):
+* Monthly == month-end (last calendar day).
+* Plain CSV output.
+* Strike = raw fixed rate from the input (no special formatting).
+* Key Rate = par rate as of the month-end valuation date.
+Other constants (Legal Entity / Clearing House / Product) hard-coded per sample.
+Spread = floating spread in bps, 2dp + " bps". Intrinsic = Termination = dirty.
+Alias = "<YYYY-MM of trade date> IR Swap <ccy> $<notional> - CME".
 """
 
 from __future__ import annotations
 
+import csv
 from datetime import date, datetime
 from pathlib import Path
 
-from openpyxl import Workbook
-
 from .base import RunContext
-from .helpers import _as_date, xldate, xlnum
+from .helpers import _as_date, mdy, num
 
 FIELDS = [
     "Internal Reference Number", "Trade Date", "Effective Date", "Maturity Date",
@@ -33,7 +32,7 @@ FIELDS = [
 
 
 def _filename(val_date: date) -> str:
-    return f"Hedge Summary {val_date:%b %d, %Y}.xlsx"
+    return f"Hedge Summary {val_date:%b %d, %Y}.csv"
 
 
 def _fmt_spread_bps(spread: float) -> str:
@@ -59,39 +58,37 @@ def _alias(td) -> str:
 def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
     pp = ctx.priced()
     dest_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Hedge Summary"
-    ws.append(FIELDS)
-    now = datetime.now()
+    rows: list[list[str]] = [FIELDS]
     for pt in pp.priced:
         td, v = pt.trade, pt.valuation
         dirty = v.clean + v.accrued
-        ws.append([
+        rows.append([
             str(td.meta.get("id", td.trade_id)),     # Internal Reference Number
-            xldate(td.deal_date),                    # Trade Date
-            xldate(td.start_date),                   # Effective Date
-            xldate(td.maturity_date),                # Maturity Date
+            mdy(td.deal_date),                       # Trade Date
+            mdy(td.start_date),                      # Effective Date
+            mdy(td.maturity_date),                   # Maturity Date
             td.notional_currency or "USD",           # Notional Currency
-            xlnum(td.notional),                      # Notional
+            num(td.notional),                        # Notional
             "Reverse Swap",                          # Product
             td.floating_index or "",                 # Index
             _fmt_spread_bps(td.floating_spread),     # Spread (bps)
-            xlnum(td.fixed_rate),                    # Strike
+            num(td.fixed_rate),                      # Strike (raw fixed rate)
             td.debt_counterparty or "",              # Counterparty
             "CME Clearing House",                     # Clearing House
             "American Express Company",               # Legal Entity
             td.debt_cusip or "",                     # Hedged Item
             _alias(td),                              # Alias
-            xlnum(v.accrued),                        # Accrued Interest
-            xlnum(v.clean),                          # Clean Price
-            xlnum(dirty),                            # Intrinsic Value
-            xlnum(v.par_rate),                       # Key Rate
-            xlnum(dirty),                            # Termination Value
+            num(v.accrued),                          # Accrued Interest
+            num(v.clean),                            # Clean Price
+            num(dirty),                              # Intrinsic Value
+            num(v.par_rate),                         # Key Rate
+            num(dirty),                              # Termination Value
             now,                                     # Valuation Timestamp
         ])
 
     out = dest_dir / _filename(ctx.val_date)
-    wb.save(out)
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows(rows)
     return [out]
