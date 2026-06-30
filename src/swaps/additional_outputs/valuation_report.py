@@ -7,7 +7,8 @@ ASSUMPTIONS (confirm — see _intake.md):
 * Internal Reference Number = the IRS raw deal id.
 * Legal Entity / Clearing House / Product are hard-coded constants per the sample.
 * Key Rate = par rate; Total Value = clean + accrued.
-* Footer sums the monetary columns; dates rendered mm/dd/yyyy.
+* Plain CSV (field-name row + data rows; no H/T, no footer); dates mm/dd/yyyy.
+* Written to the SFTP run folder AND copied into the email/ subfolder.
 """
 
 from __future__ import annotations
@@ -15,8 +16,8 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from .base import RunContext
-from .envelope import write_feed
+from .base import Channel, RunContext, resolve_channel_dir
+from .envelope import write_table_csv
 from .helpers import mdy, num
 
 FIELDS = [
@@ -24,7 +25,6 @@ FIELDS = [
     "Clearing House", "Index", "Trade Date", "Maturity Date", "Notional",
     "DV01", "Key Rate", "Clean Price", "Accrued Interest", "Total Value",
 ]
-_SUM_COLS = [8, 9, 11, 12, 13]  # Notional / DV01 / Clean / Accrued / Total
 
 
 def _filename(val_date: date) -> str:
@@ -55,5 +55,9 @@ def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
             num(v.clean + v.accrued),               # Total Value
         ])
 
-    out = write_feed(dest_dir / _filename(val_date), val_date, FIELDS, rows, _SUM_COLS)
-    return [out]
+    name = _filename(val_date)
+    written = [write_table_csv(dest_dir / name, FIELDS, rows)]
+    # Also drop a copy in the email/ subfolder of the run folder.
+    email_dir = resolve_channel_dir(Channel.EMAIL, ctx.run_dir)
+    written.append(write_table_csv(email_dir / name, FIELDS, rows))
+    return written

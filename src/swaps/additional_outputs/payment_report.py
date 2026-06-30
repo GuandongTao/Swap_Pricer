@@ -19,7 +19,7 @@ from datetime import date
 from pathlib import Path
 
 from .base import RunContext
-from .envelope import write_feed
+from .envelope import write_table_csv
 from .helpers import coupon_rows, mdy, num, same_month
 
 FIELDS = [
@@ -31,7 +31,6 @@ FIELDS = [
     "Net Payment", "Payment Date", "Counterparty",
     "Index Rate", "Current Spread", "All-In-Rate",
 ]
-_SUM_COLS = [3, 7, 11, 12]  # notional / fixed pmt / floating pmt / net
 
 
 def _filename(val_date: date) -> str:
@@ -98,5 +97,5 @@ def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
                 "",                                                 # All-In-Rate
             ])
 
-    out = write_feed(dest_dir / _filename(val_date), val_date, FIELDS, rows, _SUM_COLS)
+    out = write_table_csv(dest_dir / _filename(val_date), FIELDS, rows)
     return [out]

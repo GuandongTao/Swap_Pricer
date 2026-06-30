@@ -22,7 +22,7 @@ from pathlib import Path
 
 from ..calendar_us import is_month_end
 from .base import RunContext
-from .envelope import read_feed_column, write_feed
+from .envelope import read_feed_column, write_table_csv
 from .helpers import freq_label, mdy, num
 
 FIELDS = [
@@ -33,7 +33,6 @@ FIELDS = [
     "Current Spread", "Fixed Pmt Frequency", "Fixed Rate", "Notional",
 ]
 _REF, _TOTAL_VALUE = 0, 13
-_SUM_COLS = [8, 9, 10, 11, 12, 13, 19]  # notional/change/dv01/clean/accrued/total/notional
 
 
 def _filename(val_date: date) -> str:
@@ -111,5 +110,5 @@ def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
             num(td.notional),                       # Notional
         ])
 
-    out = write_feed(dest_dir / _filename(val_date), val_date, FIELDS, rows, _SUM_COLS)
+    out = write_table_csv(dest_dir / _filename(val_date), FIELDS, rows)
     return [out]

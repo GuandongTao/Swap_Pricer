@@ -13,11 +13,27 @@ Layout (matches ``swaps.io_prod``):
 
 from __future__ import annotations
 
+import csv
 from datetime import date
 from pathlib import Path
 from typing import Sequence
 
 from ..io_prod import SOURCE_NAME, VERSION_STAMP, write_csv_no_trailing_newline
+
+
+def write_table_csv(
+    out_path: Path,
+    field_names: Sequence[str],
+    rows: Sequence[Sequence[str]],
+) -> Path:
+    """Plain CSV: a field-name header row + data rows. No H/T envelope, no footer."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(list(field_names))
+        w.writerows([list(r) for r in rows])
+    return out_path
 
 
 def _sum_cell(rows: Sequence[Sequence[str]], col: int) -> str:
