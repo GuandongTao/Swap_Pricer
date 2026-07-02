@@ -1,12 +1,12 @@
 """Item 4: KPMG Payment Report (daily, SFTP).
 
-H/T feed (same envelope as IRS Valuation) of payments occurring during the
-val_date's CALENDAR MONTH. One row per payment date; a position with no payment
-in the month is omitted entirely. Columns per ``Payment Report.xlsx``.
+Plain CSV of payments SETTLING TODAY -- i.e. whose Payment Date == the valuation
+date. One row per such payment (fixed and/or floating). A position with no
+payment dated exactly on val_date is omitted; if none settle today the file is
+still written header-only (zero data rows). Columns per ``Payment Report.xlsx``.
 
-ASSUMPTIONS (confirm — see _intake.md):
-* "that month" = the calendar month of val_date.
-* One row per distinct payment date in the month (fixed and/or floating).
+Behavior (confirmed 2026-07-02):
+* Filter = Payment Date == val_date (NOT month-scoped).
 * Floating accrual-date cells left blank per the format note; floating day-count
   and payment are filled.
 * Net Payment = (floating received - fixed paid) for a pay-fixed swap, else the
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .base import RunContext
 from .envelope import write_table_csv
-from .helpers import coupon_rows, mdy, num, same_month
+from .helpers import _as_date, coupon_rows, mdy, num
 
 FIELDS = [
     "Internal Reference Number", "Product", "Description", "Notional",
@@ -49,14 +49,14 @@ def produce(ctx: RunContext, dest_dir: Path) -> list[Path]:
         fixed = coupon_rows(v.fixed_cf)
         floating = coupon_rows(v.floating_cf_by_period)
 
-        # Index fixed/floating periods by payment date, within the month.
+        # Keep only payments settling TODAY (Payment Date == val_date).
         fx_by_date: dict[date, dict] = {}
         for _, r in fixed.iterrows():
-            if same_month(r["payment_date"], val_date):
+            if _as_date(r["payment_date"]) == val_date:
                 fx_by_date[r["payment_date"]] = r
         fl_by_date: dict[date, dict] = {}
         for _, r in floating.iterrows():
-            if same_month(r["payment_date"], val_date):
+            if _as_date(r["payment_date"]) == val_date:
                 fl_by_date[r["payment_date"]] = r
 
         pay_dates = sorted(set(fx_by_date) | set(fl_by_date), key=lambda d: (mdy(d), str(d)))
